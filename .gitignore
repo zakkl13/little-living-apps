@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+
+# Local secrets / runtime state — never commit
+.env
+.env.local
+*.sqlite
+*.sqlite-*
+.sessions.json
+.sessions.json.tmp
+
+# Codex auth / session data if it ever lands in-repo by accident
+.codex/
+auth.json
