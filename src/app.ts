@@ -19,6 +19,7 @@ import { createEventQueue, type EventQueue } from "./runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "./runtime/loop.js";
 import { openSnapshotStore } from "./runtime/snapshot.js";
 import type { SpriteHold } from "./runtime/hold.js";
+import type { TelegramUpdate } from "./transport/webhook.js";
 
 import type { CodexRunner } from "./workers/runner.js";
 import { createOrchestrator, type WorkerOrchestrator } from "./workers/orchestrator.js";
@@ -43,6 +44,8 @@ export interface ManagerApp {
   transcript: Transcript;
   /** Enqueue an owner message (the webhook calls this after authorizing). */
   enqueueOwner(chatId: number, text: string): void;
+  /** Authorize + handle commands + enqueue, from a raw Telegram update (the webhook sink). */
+  ingestTelegramUpdate(update: TelegramUpdate): void;
   /** Persist transcript + queue + workers (run after each turn). */
   persist(): void;
   /** Rehydrate from the last snapshot (cold-wake recovery). */
@@ -95,6 +98,39 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     });
   }
 
+  function handleCommand(text: string, chatId: number): void {
+    const command = text.split(/\s+/)[0]?.toLowerCase().replace(/@.*$/, "") ?? "";
+    switch (command) {
+      case "/start":
+      case "/help":
+        void notify(
+          chatId,
+          "🤖 Manager ready. Tell me what to build and I'll delegate to Codex workers, " +
+            "remember what matters, and report back.\n\nCommands:\n/status — workers + state\n" +
+            "/new — clear the working transcript (memory is kept)",
+        );
+        return;
+      case "/status": {
+        const ws = orchestrator.list();
+        const lines = [
+          `Workers: ${ws.length}`,
+          ...ws.map((w) => `  ${w.id} [${w.status}] ${w.purpose}`),
+          `Pending events: ${queue.size()}`,
+          `Memory: ${config.memoryDir}`,
+        ];
+        void notify(chatId, lines.join("\n"));
+        return;
+      }
+      case "/new":
+        transcript.load([]);
+        persist();
+        void notify(chatId, "🆕 Cleared the working transcript. Long-term memory is untouched.");
+        return;
+      default:
+        void notify(chatId, `Unknown command: ${command}. Try /help.`);
+    }
+  }
+
   function persist(): void {
     snapshots.save({
       version: 1,
@@ -130,6 +166,26 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     orchestrator,
     transcript,
     enqueueOwner: (chatId, text) => queue.enqueue({ kind: "owner_message", chatId, text }),
+    ingestTelegramUpdate(update) {
+      const msg = update.message ?? update.edited_message;
+      if (!msg || typeof msg.text !== "string") return;
+      const chatId = msg.chat.id;
+      const fromId = msg.from?.id;
+      const text = msg.text.trim();
+
+      // Authorize (DESIGN: single owner). Unauthorized senders get a refusal, never a turn.
+      if (fromId === undefined || !config.allowedUserIds.includes(fromId)) {
+        logger.warn("Rejected unauthorized update", { fromId, chatId });
+        void notify(chatId, "⛔ You are not authorized to use this bot.");
+        return;
+      }
+
+      if (text.startsWith("/")) {
+        handleCommand(text, chatId);
+        return;
+      }
+      queue.enqueue({ kind: "owner_message", chatId, text });
+    },
     persist,
     restore() {
       const snap = snapshots.load();
