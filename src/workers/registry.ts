@@ -32,11 +32,8 @@ export interface WorkerSnapshot {
 export interface WorkerRegistry {
   add(rec: { id: string; purpose: string; project: string }): WorkerRecord;
   get(id: string): WorkerRecord | undefined;
-  all(): WorkerRecord[];
   info(id: string): WorkerInfo | undefined;
   infos(): WorkerInfo[];
-  /** Workers with a run in flight (status running). */
-  activeCount(): number;
   /** Durable projection for snapshotting. */
   snapshot(): WorkerSnapshot[];
   /** Rehydrate from a snapshot on boot; in-flight runs are gone so statuses settle to idle. */
@@ -59,13 +56,11 @@ export function createWorkerRegistry(): WorkerRegistry {
       return rec;
     },
     get: (id) => workers.get(id),
-    all: () => [...workers.values()],
     info: (id) => {
       const r = workers.get(id);
       return r ? toInfo(r) : undefined;
     },
     infos: () => [...workers.values()].map(toInfo),
-    activeCount: () => [...workers.values()].filter((r) => r.status === "running").length,
     snapshot: () =>
       [...workers.values()].map((r) => ({
         id: r.id,

@@ -99,12 +99,10 @@ export async function runManagerTurn(
 }
 
 /** Translate a queue event into the user-role message that opens the turn. */
-export function eventToUserMessage(event: ManagerEvent): ModelMessage {
+function eventToUserMessage(event: ManagerEvent): ModelMessage {
   const text =
     event.kind === "owner_message"
       ? event.text
-      : event.kind === "worker_event"
-        ? `[worker ${event.workerId} ${event.status}] ${event.summary}`
-        : "[idle tick — the queue has drained; optional memory hygiene]";
+      : `[worker ${event.workerId} ${event.status}] ${event.summary}`;
   return { role: "user", content: [{ type: "text", text }] };
 }

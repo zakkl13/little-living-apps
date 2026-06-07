@@ -1,7 +1,7 @@
 // The single durable queue that feeds the serialized manager loop (DESIGN §3). Two producers —
-// owner messages (from the webhook) and worker-completion events (from the orchestrator) — plus
-// optional idle ticks. One consumer drains it, one turn at a time. Serializing turns is the core
-// invariant that keeps memory + transcript coherent without locks.
+// owner messages (from the webhook) and worker-completion events (from the orchestrator). One
+// consumer drains it, one turn at a time. Serializing turns is the core invariant that keeps
+// memory + transcript coherent without locks.
 //
 // The queue is in-memory; persistence (queue.json) is layered on by snapshot.ts (DESIGN §11) via
 // snapshot()/load(). An onEnqueue listener lets the loop wake reactively.
@@ -25,21 +25,13 @@ export interface WorkerEvent {
   status: "completed" | "failed";
   summary: string;
 }
-export interface TickEvent {
-  kind: "tick";
-  id: string;
-}
-export type ManagerEvent = OwnerMessageEvent | WorkerEvent | TickEvent;
+export type ManagerEvent = OwnerMessageEvent | WorkerEvent;
 
-export type NewEvent =
-  | Omit<OwnerMessageEvent, "id">
-  | Omit<WorkerEvent, "id">
-  | Omit<TickEvent, "id">;
+export type NewEvent = Omit<OwnerMessageEvent, "id"> | Omit<WorkerEvent, "id">;
 
 export interface EventQueue {
   enqueue(event: NewEvent): ManagerEvent;
   dequeue(): ManagerEvent | undefined;
-  peek(): ManagerEvent | undefined;
   size(): number;
   isEmpty(): boolean;
   snapshot(): ManagerEvent[];
@@ -60,9 +52,6 @@ export function createEventQueue(): EventQueue {
     },
     dequeue() {
       return items.shift();
-    },
-    peek() {
-      return items[0];
     },
     size() {
       return items.length;

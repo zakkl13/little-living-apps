@@ -9,7 +9,7 @@ import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { openSnapshotStore, type ManagerSnapshot } from "../src/runtime/snapshot.js";
 import { noopHold } from "../src/runtime/hold.js";
 import { makeFakeCodex } from "./fakes/fakeCodex.js";
-import { makeFakeAnthropic, resp, text, toolUse, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
+import { makeFakeAnthropic, resp, toolUse, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
 import { buildConfig, ALLOWED_USER_ID } from "./helpers.js";
 import type { Config } from "../src/config.js";
 

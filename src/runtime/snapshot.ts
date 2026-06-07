@@ -54,13 +54,15 @@ export function openSnapshotStore(dir: string): SnapshotStore {
       if (!existsSync(path)) return undefined;
       try {
         const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<ManagerSnapshot>;
-        if (parsed && parsed.version === 1 && Array.isArray(parsed.transcript)) {
-          return {
-            version: 1,
-            transcript: parsed.transcript,
-            queue: parsed.queue ?? [],
-            workers: parsed.workers ?? [],
-          };
+        // We are the only writer (version 1 always carries all three arrays); a missing field
+        // means the file is corrupt/truncated, so ignore it rather than papering over it.
+        if (
+          parsed.version === 1 &&
+          Array.isArray(parsed.transcript) &&
+          Array.isArray(parsed.queue) &&
+          Array.isArray(parsed.workers)
+        ) {
+          return { version: 1, transcript: parsed.transcript, queue: parsed.queue, workers: parsed.workers };
         }
         logger.warn("Snapshot had unexpected shape; ignoring", { path });
       } catch (err) {

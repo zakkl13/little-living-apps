@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { dirname, join, normalize, posix, relative } from "node:path";
 
-import { indexableText, parseBlock } from "./block.js";
+import { indexableText, parseBlock, serializeBlock } from "./block.js";
 import { commitAll, ensureRepo } from "./git.js";
 import { openFts, type FtsIndex, type SearchHit } from "./fts.js";
 
@@ -113,12 +113,12 @@ export function openMemFs(opts: MemFsOptions): MemFs {
   seedScaffold(dir);
 
   // ---- path handling -------------------------------------------------------
-  /** Map a tool path ("/memories/...", "memories/...", or relative) to a safe repo-relative path. */
+  /** Map a tool path ("/memories/..." from the model, or a bare repo-relative path) to a safe
+   * repo-relative path. */
   function toRel(toolPath: string): string {
     let p = String(toolPath ?? "").trim().replace(/\\/g, "/");
     if (p === MEMORY_MOUNT || p === MEMORY_MOUNT + "/") return "";
     if (p.startsWith(MEMORY_MOUNT + "/")) p = p.slice(MEMORY_MOUNT.length + 1);
-    else if (p.startsWith("memories/")) p = p.slice("memories/".length);
     p = p.replace(/^\/+/, "");
     const norm = normalize(p);
     if (norm === ".." || norm.startsWith("../") || norm.startsWith("/")) {
@@ -358,15 +358,12 @@ function seedScaffold(dir: string): void {
   if (!existsSync(persona)) {
     writeFileSync(
       persona,
-      serializeSeed(
-        "who the manager is and how it works",
-        "The manager plans, remembers, and delegates to Codex workers. It has no shell/file/net\n" +
-          "tools of its own — its only hands are the worker, memory, and notify tools.",
-      ),
+      serializeBlock({
+        description: "who the manager is and how it works",
+        body:
+          "The manager plans, remembers, and delegates to Codex workers. It has no shell/file/net\n" +
+          "tools of its own — its only hands are the worker, memory, and notify tools.\n",
+      }),
     );
   }
-}
-
-function serializeSeed(description: string, body: string): string {
-  return `---\ndescription: ${description}\n---\n${body}\n`;
 }

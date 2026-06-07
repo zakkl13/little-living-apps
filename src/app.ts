@@ -79,17 +79,15 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     orchestrationToolModule(orchestrator),
   ]);
 
+  const fmtWorker = (w: WorkerInfo): string => `- ${w.id} [${w.status}] ${w.purpose} @ ${w.project}`;
+
   function workersLine(): string | undefined {
     const ws = orchestrator.list();
-    return ws.length
-      ? ws.map((w) => `- ${w.id} [${w.status}] ${w.purpose} @ ${w.project}`).join("\n")
-      : undefined;
+    return ws.length ? ws.map(fmtWorker).join("\n") : undefined;
   }
 
   function mirrorWorkers(ws: WorkerInfo[]): void {
-    const body = ws.length
-      ? ws.map((w) => `- ${w.id} [${w.status}] ${w.purpose} @ ${w.project}`).join("\n")
-      : "(no active workers)";
+    const body = ws.length ? ws.map(fmtWorker).join("\n") : "(no active workers)";
     // create overwrites; commit-per-write dedups identical content, so redundant mirrors are free.
     mem.create({
       command: "create",

@@ -35,7 +35,6 @@ export interface WorkerOrchestrator extends Orchestrator {
   registry: WorkerRegistry;
   /** Resolve once every in-flight run has settled (test helper). */
   whenQuiet(): Promise<void>;
-  activeCount(): number;
 }
 
 export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
@@ -80,6 +79,12 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
           const r = registry.get(id);
           if (r) r.threadId = tid;
         },
+        // Surface live progress to subagent_poll while the run is in flight; the final summary
+        // overwrites it on settle.
+        onProgress: (note) => {
+          const r = registry.get(id);
+          if (r) r.latest = note;
+        },
       })
       .then(
         (turn) => settle(id, abort, turn.ok, turn.threadId, turn.finalResponse),
@@ -116,7 +121,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
 
   const orch: WorkerOrchestrator = {
     registry,
-    activeCount: () => registry.activeCount(),
 
     start(objective, project) {
       counter += 1;

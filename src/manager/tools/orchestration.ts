@@ -5,7 +5,7 @@
 
 import type { ToolModule } from "./types.js";
 
-export type WorkerStatus = "running" | "idle" | "completed" | "failed" | "canceled";
+export type WorkerStatus = "running" | "idle" | "failed" | "canceled";
 
 export interface WorkerInfo {
   id: string;

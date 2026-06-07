@@ -7,7 +7,6 @@ import type { ToolHandler, ToolHandlerCtx, ToolModule, ToolResult } from "./type
 
 export interface ToolRegistry {
   specs(): ToolSpec[];
-  has(name: string): boolean;
   dispatch(name: string, input: Record<string, unknown>, ctx: ToolHandlerCtx): Promise<ToolResult>;
 }
 
@@ -25,7 +24,6 @@ export function buildRegistry(modules: ToolModule[]): ToolRegistry {
 
   return {
     specs: () => specs,
-    has: (name) => handlers.has(name),
     async dispatch(name, input, ctx) {
       const handler = handlers.get(name);
       if (!handler) return { content: `unknown tool: ${name}`, isError: true };
