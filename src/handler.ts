@@ -3,9 +3,9 @@
 // driven against an in-process fake in tests (no subprocess, no real Codex).
 
 import type { Config } from "./config.js";
-import type { CodexRunner } from "./codex.js";
+import type { CodexRunner } from "./workers/runner.js";
 import type { SessionStore } from "./sessions.js";
-import type { SpriteHold } from "./sprite.js";
+import type { SpriteHold } from "./runtime/hold.js";
 import { logger } from "./logger.js";
 
 export interface TelegramMessage {

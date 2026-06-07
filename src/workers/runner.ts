@@ -10,8 +10,8 @@
 
 import { spawn } from "node:child_process";
 import { Codex, type ThreadItem } from "@openai/codex-sdk";
-import type { Config } from "./config.js";
-import { logger } from "./logger.js";
+import type { Config } from "../config.js";
+import { logger } from "../logger.js";
 
 export interface CodexTurn {
   ok: boolean;

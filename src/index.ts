@@ -3,10 +3,10 @@
 // it auto-restarts on wake (SPEC §6 / §11 rule 2).
 
 import { loadConfig, ConfigError } from "./config.js";
-import { createTelegramClient } from "./telegram.js";
+import { createTelegramClient } from "./transport/telegram.js";
 import { openSessionStore } from "./sessions.js";
-import { createCodexRunner } from "./codex.js";
-import { createSpriteHold } from "./sprite.js";
+import { createCodexRunner } from "./workers/runner.js";
+import { createSpriteHold } from "./runtime/hold.js";
 import { startWebhookServer } from "./webhook.js";
 import type { HandlerDeps } from "./handler.js";
 import { logger } from "./logger.js";

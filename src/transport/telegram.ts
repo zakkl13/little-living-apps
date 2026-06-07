@@ -4,7 +4,7 @@
 // tests. Handles the one hard requirement from the spec: responses > 4096 chars are chunked,
 // never truncated.
 
-import { logger } from "./logger.js";
+import { logger } from "../logger.js";
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 

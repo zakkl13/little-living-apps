@@ -12,7 +12,7 @@
 // the hold and everything becomes a no-op, so the same code runs everywhere.
 
 import { request } from "node:http";
-import { logger } from "./logger.js";
+import { logger } from "../logger.js";
 
 export interface SpriteHold {
   /** Register interest in keeping the Sprite awake (refcounted; starts the heartbeat). */

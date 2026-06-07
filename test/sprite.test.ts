@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { createSpriteHold } from "../src/sprite.js";
+import { createSpriteHold } from "../src/runtime/hold.js";
 
 interface Recorded {
   method: string;

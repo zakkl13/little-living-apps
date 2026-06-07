@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig, type Config } from "../src/config.js";
-import { createTelegramClient } from "../src/telegram.js";
+import { createTelegramClient } from "../src/transport/telegram.js";
 import { openSessionStore, type SessionStore } from "../src/sessions.js";
-import type { CodexRunner } from "../src/codex.js";
-import type { SpriteHold } from "../src/sprite.js";
+import type { CodexRunner } from "../src/workers/runner.js";
+import type { SpriteHold } from "../src/runtime/hold.js";
 import { startWebhookServer, type RunningServer } from "../src/webhook.js";
 import type { HandlerDeps, TelegramUpdate } from "../src/handler.js";
 import { makeFakeCodex, type FakeCodex } from "./fakes/fakeCodex.js";
@@ -54,8 +54,11 @@ export function buildConfig(overrides: Record<string, string> = {}): Config {
     TELEGRAM_BOT_TOKEN: "test-token",
     ALLOWED_USER_IDS: String(ALLOWED_USER_ID),
     TELEGRAM_WEBHOOK_SECRET: "secret-xyz",
+    ANTHROPIC_API_KEY: "sk-ant-test",
     WORKSPACE_DIR: workspace,
     SESSION_STORE_PATH: join(dir, ".sessions.json"),
+    MEMORY_DIR: join(dir, "memory"),
+    MANAGER_STATE_DIR: join(dir, "state"),
     PORT: "0",
     TELEGRAM_API_BASE_URL: "http://127.0.0.1:1", // caller overrides with the fake's URL
     ...overrides,

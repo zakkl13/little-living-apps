@@ -6,6 +6,7 @@ const base: NodeJS.ProcessEnv = {
   TELEGRAM_BOT_TOKEN: "tok",
   ALLOWED_USER_IDS: "1,2,3",
   TELEGRAM_WEBHOOK_SECRET: "s3cr3t",
+  ANTHROPIC_API_KEY: "sk-ant-test",
 };
 
 describe("loadConfig", () => {
@@ -17,6 +18,23 @@ describe("loadConfig", () => {
     assert.equal(c.workspaceDir, "/workspace/project");
     assert.equal(c.webhookPath, "/tg/s3cr3t");
     assert.equal(c.telegramApiBaseUrl, "https://api.telegram.org");
+  });
+
+  it("loads v0.2 manager config (key + memory/state dirs + models)", () => {
+    const c = loadConfig(base);
+    assert.equal(c.anthropicApiKey, "sk-ant-test");
+    assert.equal(c.managerModel, "claude-opus-4-8");
+    assert.equal(c.utilityModel, "claude-haiku-4-5");
+    assert.match(c.memoryDir, /memory$/);
+    assert.match(c.managerStateDir, /state$/);
+  });
+
+  it("requires ANTHROPIC_API_KEY (the manager's paid plane)", () => {
+    const { ANTHROPIC_API_KEY: _omit, ...withoutKey } = base;
+    assert.throws(
+      () => loadConfig(withoutKey),
+      (e: unknown) => e instanceof ConfigError && /ANTHROPIC_API_KEY/.test((e as Error).message),
+    );
   });
 
   it("refuses to start when a billing-flip API key is set", () => {

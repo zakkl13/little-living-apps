@@ -6,7 +6,7 @@
 //   LONG_OUTPUT   -> a 9000-char reply (exercises Telegram chunking)
 // On resume, the final message echoes the resumed thread id so tests can prove continuity.
 
-import { friendlyError, type CodexRunner, type CodexTurn } from "../../src/codex.js";
+import { friendlyError, type CodexRunner, type CodexTurn } from "../../src/workers/runner.js";
 
 export interface FakeCodexCall {
   prompt: string;

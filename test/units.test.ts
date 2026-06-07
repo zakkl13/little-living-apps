@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import { openSessionStore } from "../src/sessions.js";
-import { chunkText } from "../src/telegram.js";
+import { chunkText } from "../src/transport/telegram.js";
 
 describe("sessions store", () => {
   it("persists across reopen and supports delete", () => {

@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import type { ThreadItem } from "@openai/codex-sdk";
-import { formatItem, friendlyError } from "../src/codex.js";
+import { formatItem, friendlyError } from "../src/workers/runner.js";
 
 // Minimal ThreadItem builders — we only populate the fields formatItem reads.
 const item = (o: Record<string, unknown>): ThreadItem => o as unknown as ThreadItem;
