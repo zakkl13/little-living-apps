@@ -1,14 +1,14 @@
 {
   "name": "sprite-codex-bot",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Telegram bot bridging to a headless OpenAI Codex session running on a Fly Sprite",
+  "description": "Telegram → Claude manager orchestrating headless OpenAI Codex workers on a Fly Sprite",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "start": "node --experimental-sqlite --disable-warning=ExperimentalWarning dist/index.js",
     "dev": "NODE_OPTIONS=\"--experimental-sqlite --disable-warning=ExperimentalWarning\" tsx watch src/index.ts",
     "typecheck": "tsc -p tsconfig.json",

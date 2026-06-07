@@ -26,6 +26,7 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 : "${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env}"
 : "${ALLOWED_USER_IDS:?Set ALLOWED_USER_IDS in .env}"
 : "${TELEGRAM_WEBHOOK_SECRET:?Set TELEGRAM_WEBHOOK_SECRET in .env}"
+: "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY in .env (the manager's brain)}"
 
 command -v sprite >/dev/null 2>&1 || die "The 'sprite' CLI is not installed. See docs.sprites.dev."
 
@@ -38,7 +39,7 @@ sprite_service() {                                                             #
   sprite service create "$SPRITE_NAME" \
     --name codex-bot \
     --workdir "$REMOTE_REPO_DIR" \
-    --command "node dist/index.js" \
+    --command "node --experimental-sqlite --disable-warning=ExperimentalWarning dist/index.js" \
     "$@"
 }
 
@@ -52,7 +53,7 @@ log "3/6 Installing deps + building on the Sprite"
 sprite_run bash -lc "cd '$REMOTE_REPO_DIR' && npm ci && npm run build"
 
 log "4/6 Bootstrapping Codex + workspace repo"
-sprite_run bash -lc "cd '$REMOTE_REPO_DIR' && WORKSPACE_DIR='${WORKSPACE_DIR:-/workspace/project}' CODEX_HOME='${CODEX_HOME:-/workspace/.codex}' REPO_DIR='$REMOTE_REPO_DIR' bash provision/bootstrap.sh"
+sprite_run bash -lc "cd '$REMOTE_REPO_DIR' && WORKSPACE_DIR='${WORKSPACE_DIR:-/workspace/project}' CODEX_HOME='${CODEX_HOME:-/workspace/.codex}' MEMORY_DIR='${MEMORY_DIR:-/workspace/.manager/memory}' MANAGER_STATE_DIR='${MANAGER_STATE_DIR:-/workspace/.manager/state}' REPO_DIR='$REMOTE_REPO_DIR' bash provision/bootstrap.sh"
 
 SPRITE_PUBLIC_URL="$(sprite_url)"
 log "Sprite URL: $SPRITE_PUBLIC_URL"
@@ -69,10 +70,14 @@ sprite_service \
   --env "TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN" \
   --env "ALLOWED_USER_IDS=$ALLOWED_USER_IDS" \
   --env "TELEGRAM_WEBHOOK_SECRET=$TELEGRAM_WEBHOOK_SECRET" \
+  --env "ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" \
+  --env "MANAGER_MODEL=${MANAGER_MODEL:-claude-opus-4-8}" \
+  --env "UTILITY_MODEL=${UTILITY_MODEL:-claude-haiku-4-5}" \
+  --env "MEMORY_DIR=${MEMORY_DIR:-/workspace/.manager/memory}" \
+  --env "MANAGER_STATE_DIR=${MANAGER_STATE_DIR:-/workspace/.manager/state}" \
   --env "PUBLIC_URL=$SPRITE_PUBLIC_URL" \
   --env "PORT=${PORT:-8080}" \
   --env "WORKSPACE_DIR=${WORKSPACE_DIR:-/workspace/project}" \
-  --env "SESSION_STORE_PATH=${SESSION_STORE_PATH:-/workspace/.sessions.json}" \
   --env "CODEX_HOME=${CODEX_HOME:-/workspace/.codex}" \
   --env "CODEX_SANDBOX_MODE=${CODEX_SANDBOX_MODE:-danger-full-access}"
 

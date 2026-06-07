@@ -58,7 +58,6 @@ export function buildConfig(overrides: Record<string, string> = {}): Config {
     TELEGRAM_WEBHOOK_SECRET: "secret-xyz",
     ANTHROPIC_API_KEY: "sk-ant-test",
     WORKSPACE_DIR: workspace,
-    SESSION_STORE_PATH: join(dir, ".sessions.json"),
     MEMORY_DIR: join(dir, "memory"),
     MANAGER_STATE_DIR: join(dir, "state"),
     PORT: "0",

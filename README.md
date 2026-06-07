@@ -1,87 +1,100 @@
 # sprite-codex-bot
 
-A Telegram bot that drives a headless **OpenAI Codex** session running on a **Fly Sprite**, on
-your behalf, using your **ChatGPT subscription** (no API key, no separate metered billing).
+A Telegram bot where you talk to a **Claude manager** that orchestrates headless **OpenAI Codex**
+workers on a **Fly Sprite**. The manager plans, remembers, and delegates; workers do the concrete
+work in the workspace. Two billing planes: Anthropic (metered, the manager) and your **ChatGPT
+subscription** (the workers — no OpenAI API key).
 
-This is the v0.1 from [`SPEC.md`](./SPEC.md): the thinnest proof of "an agent lives on a Sprite,
-I talk to it from my phone." One Codex session per Telegram chat, persisted to disk so it
-survives Sprite hibernation. Webhook transport. Creator-only via a user-ID allowlist.
+This is **v0.2** from [`DESIGN.md`](./DESIGN.md). v0.1 (a thin Telegram→Codex relay, see
+[`SPEC.md`](./SPEC.md)) is superseded: the relay is replaced by a manager runtime + memory +
+worker-coordination layer. The Sprite keep-alive, Codex SDK integration, and Telegram transport
+carry over.
 
 ```
-Telegram ──webhook POST──▶ bot (Sprite Service, :8080)
-                              │ authorize · resolve thread · post "Working…"
-                              │ @openai/codex-sdk: resumeThread(id) | startThread()
-                              │ thread.runStreamed(prompt) → live progress edits
-                              ▼
-                           final reply (chunked ≤4096) ──▶ Telegram sendMessage
+ Telegram ──webhook POST──▶ EVENT QUEUE ──▶ manager turn (SERIALIZED)
+  (owner)                   owner_msg | worker_event | tick      │
+        ▲                                                        │ Anthropic Messages (Opus)
+        │ notify_user                                            │ tool loop
+        │                    ┌── tools (the only hands) ─────────┘
+        │                    │  memory  → MemFS (git markdown + sqlite FTS)
+        │                    │  subagent_* → Codex workers (async, parallel, scoped)
+        └────────────────────┤  notify_user → Telegram
+                             └── workers run in the shared tree under prompt-assigned scopes
 ```
+
+The manager has **no shell/file/network tools** — that boundary is enforced by its tool surface
+(only `memory`, `subagent_*`, `memory_search`/`recall_search`, `notify_user`). Workers have full
+access under standing rules (`provision/AGENTS.md`). Everything survives Sprite cold-wake via
+per-turn snapshots + a git-backed memory repo.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `src/config.ts` | Env loading + validation; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard). |
-| `src/codex.ts` | `CodexRunner` over **`@openai/codex-sdk`**: `startThread`/`resumeThread` + `runStreamed`, mapping events to live progress. |
-| `src/sessions.ts` | Disk-backed `chat_id → thread_id` JSON store with atomic writes. |
-| `src/telegram.ts` | Tiny fetch-based Bot API client; `sendMessage` (chunked ≤4096) + `editMessageText` for the live status. |
-| `src/webhook.ts` | `node:http` server; verifies secret path + `X-Telegram-Bot-Api-Secret-Token`. |
-| `src/handler.ts` | Per-update logic: authorize → resolve thread → stream progress → reply; `/new`, `/status`. |
-| `src/index.ts` | Entrypoint wiring it together; runs as a Sprite Service. |
-| `provision/` | `provision.sh` (laptop) + `bootstrap.sh` (on-Sprite). |
-| `AGENTS.md` | Default agent-manager instructions deployed to `/workspace/project`. |
-| `test/` | Unit tests + the fake-driven **end-to-end** test. |
+| `src/config.ts` | Env loading + validation; requires `ANTHROPIC_API_KEY`; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard). |
+| `src/app.ts` | Composition root: wires memory + orchestrator + tool registry + loop + snapshots; `ingestTelegramUpdate`, `persist`/`restore`. |
+| `src/manager/anthropic.ts` | `ManagerModel` seam + real `@anthropic-ai/sdk` wrapper (compaction + context-editing betas; compaction blocks round-trip verbatim). |
+| `src/manager/manager.ts` | One serialized manager turn: event → tool loop → deliver. |
+| `src/manager/prompt.ts` · `tools/` | System prompt (persona + rules + core memory) and the tool registry (memory, orchestration, notify). |
+| `src/memory/` | `memfs.ts` (the `memory_20250818` backend over `/memories`), `fts.ts` (sqlite FTS5), `git.ts` (commit-per-write changelog), `block.ts`. |
+| `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (cold-wake), `hold.ts` (Sprite keep-alive). |
+| `src/workers/` | `runner.ts` (`CodexRunner` over `@openai/codex-sdk`), `orchestrator.ts` (async `subagent_*`; steer = abort+resume), `registry.ts`, `summarize.ts`. |
+| `src/transport/` | `telegram.ts` (chunked Bot API client), `webhook.ts` (`node:http`; secret-verified; enqueues). |
+| `provision/` | `AGENTS.md` (worker rules: memory-bank + scope discipline), `memory-bank/` templates, `provision.sh`/`bootstrap.sh`. |
+| `test/` | Per-subsystem tests + the fake-driven **headline e2e**. |
 
-## The end-to-end test (no real Sprite / Telegram / Codex)
+## Tests — the best e2e we can run without deploying
 
-The whole point of the harness is that every external boundary is injectable, so the **real**
-bot loop runs against fakes:
+Every external boundary is injectable, so the **real** runtime loop runs against fakes while
+memory runs for real:
 
-- **Telegram** → `test/fakes/fakeTelegram.ts`, an in-process HTTP server that records every
-  `sendMessage` and `editMessageText`. The bot points at it via `TELEGRAM_API_BASE_URL`.
-- **Codex** → `test/fakes/fakeCodex.ts`, an in-process implementation of the `CodexRunner`
-  interface (no subprocess). It emits progress notes via `onProgress` and echoes the resumed
-  thread id so we can prove continuity. Prompt sentinels (`LONG_OUTPUT`, `AUTH_FAILURE`) drive
-  the edge cases. The real runner wraps `@openai/codex-sdk`; tests inject the fake at that seam.
-- **Sprite** → not needed; the bot is just a local process. Hibernate→wake is simulated by
-  killing the bot and re-reading the on-disk thread store.
+- **Anthropic** → `test/fakes/fakeAnthropic.ts`, a scripted `ManagerModel` returning predetermined
+  `tool_use` / text / `compaction` blocks. Records every request so we can assert the
+  compaction round-trip.
+- **Codex** → `test/fakes/fakeCodex.ts`, an in-process `CodexRunner` (async runs, `AbortSignal`,
+  early thread-id, `WORKER_FAIL`/`WAIT_FOR_ABORT`/`LONG_OUTPUT` sentinels).
+- **Telegram** → `test/fakes/fakeTelegram.ts`, an in-process HTTP server recording sends/edits.
+- **Sprite** → a counting hold; off-Sprite the real hold no-ops.
+- **Memory** → the **real** `node:sqlite` FTS + a **real** tmp git repo (high-fidelity).
 
-`test/e2e.test.ts` posts fake Telegram updates at the webhook endpoint and asserts the full
-loop, covering most of the SPEC §12 acceptance criteria: auth rejection, first-turn thread
-creation, **streamed progress edits**, stable-id resume, `/new`, `/status`, >4096-char chunking,
-auth-failure surfacing, webhook secret rejection, and survival across a restart.
+`test/e2e.test.ts` is the headline (DESIGN §13): owner message → manager turn → `subagent_start`
+×2 (parallel, prompt-scoped) → workers complete → `worker_event`s → manager narrates →
+`notify_user`; it asserts memory-tool writes land in MemFS, compaction blocks round-trip, and a
+simulated **cold wake** restores memory + transcript losslessly. Subsystem suites cover memory,
+the manager loop, workers, durability, config, and transport.
 
 ```bash
 npm install
 npm run typecheck
-npm test
+npm test           # runs with --experimental-sqlite (node:sqlite)
 ```
 
-## Real bring-up (SPEC §10)
+> Note: the e2e never calls a real model — it validates *our* contracts (loop, memory, compaction
+> round-trip, durability), not Anthropic's beta behavior. Live beta validation is a deploy-time
+> follow-up.
 
-1. **Enable device-code login** in ChatGPT → Settings → Security (Path A), _or_ run
-   `codex login` on your laptop and grab `~/.codex/auth.json` (Path B).
+## Real bring-up
+
+1. Get a Codex subscription login (`codex login` → `CODEX_HOME/auth.json`) and an Anthropic API key.
 2. Copy `.env.example` → `.env`; fill `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`,
-   `TELEGRAM_WEBHOOK_SECRET`, and `SPRITES_TOKEN`.
-3. Run `provision/provision.sh`. It creates the Sprite, pushes the repo, runs `bootstrap.sh`
-   (installs Codex + git, inits `/workspace/project`, places `AGENTS.md`, sets `CODEX_HOME`),
-   probes auth, and registers the bot as a Sprite **Service** with `PUBLIC_URL` set so it calls
-   `setWebhook` on boot.
-4. Finish auth on the Sprite if needed: `CODEX_HOME=/workspace/.codex codex login --device-auth`.
-   The SDK rides this same cached login (it reads `CODEX_HOME/auth.json`).
-5. Message your bot. Follow-ups resume the same thread; `/new` starts fresh; `/status` shows
-   auth + thread + sandbox.
+   `TELEGRAM_WEBHOOK_SECRET`, `ANTHROPIC_API_KEY` (and `SPRITES_TOKEN` for provisioning).
+3. Run `provision/provision.sh` — creates the Sprite, pushes the repo, runs `bootstrap.sh`
+   (installs Codex + git, inits the workspace, places `provision/AGENTS.md` + `memory-bank/`
+   templates, sets `CODEX_HOME`), and registers the bot as a Sprite **Service** with `PUBLIC_URL`
+   set so it calls `setWebhook` on boot.
+4. Message your bot. The manager delegates to workers and reports back; `/status` shows workers +
+   state; `/new` clears the working transcript (long-term memory is kept).
 
-> **The Sprites CLI is new** — the command names in `provision.sh` are isolated in `sprite_*`
-> shell functions and must be confirmed against [docs.sprites.dev](https://docs.sprites.dev).
-> Note the SDK may ship its own bundled `codex` binary; both it and the CLI read `CODEX_HOME`,
-> so subscription auth works either way. Set `CODEX_BIN` to pin a specific binary.
+> **The Sprites CLI is new** — command names in `provision.sh` are isolated in `sprite_*` shell
+> functions; confirm against [docs.sprites.dev](https://docs.sprites.dev).
 
 ## Safety notes
 
-- **Never set `OPENAI_API_KEY` or `CODEX_API_KEY`** on the Sprite — either flips Codex to
-  metered API billing. The bot refuses to boot if either is present, and the runner omits
-  `apiKey` and strips both from the CLI env so the SDK stays on the ChatGPT subscription.
-- Default sandbox is **`danger-full-access`** (paired with `approvalPolicy: "never"`): the Sprite
-  is the isolation boundary, and Landlock/seccomp may not initialize in a microVM, so no sandbox
-  is initialized at all. Switch via `CODEX_SANDBOX_MODE` for `workspace-write` / `read-only`.
+- **Never set `OPENAI_API_KEY` or `CODEX_API_KEY`** on the Sprite — either flips Codex to metered
+  API billing. The bot refuses to boot if either is present; the runner stays on the ChatGPT
+  subscription via `CODEX_HOME`.
+- The manager's capability boundary is its tool list — there is no bash/read/write/web tool on the
+  raw Messages API unless we add one, so "no hands" is airtight by construction.
+- Default worker sandbox is **`danger-full-access`** (with `approvalPolicy: "never"`): the Sprite
+  is the isolation boundary. Switch via `CODEX_SANDBOX_MODE`.
 - The webhook path embeds the secret and every POST is verified against the secret-token header.

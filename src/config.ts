@@ -20,7 +20,6 @@ export interface Config {
   publicUrl: string;
   /** Holds project repos that workers operate on (DESIGN §10). */
   workspaceDir: string;
-  sessionStorePath: string;
   sandboxMode: SandboxMode;
   /** Telegram Bot API base URL; overridden in tests. */
   telegramApiBaseUrl: string;
@@ -111,7 +110,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     publicUrl: (env.PUBLIC_URL?.trim() ?? "").replace(/\/+$/, ""),
     workspaceDir: env.WORKSPACE_DIR?.trim() || "/workspace/project",
-    sessionStorePath: env.SESSION_STORE_PATH?.trim() || "/workspace/.sessions.json",
     sandboxMode: sandboxRaw,
     telegramApiBaseUrl: (env.TELEGRAM_API_BASE_URL?.trim() || "https://api.telegram.org").replace(
       /\/+$/,
