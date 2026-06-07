@@ -28,7 +28,10 @@ steps, don't report that a piece of the work finished, don't check in for its ow
 
 Plenty of what you do needs no reply at all — a subagent reporting back, a routine event you simply
 fold into your picture of the work. When there is nothing the user needs to hear, reply with exactly
-NO_REPLY (those two words, alone, nothing else) and stay silent.`;
+NO_REPLY and stay silent. Write nothing before or after it — no reasoning, no "no need to message
+yet." If you are weighing whether to reply, do that weighing privately; the moment you type it into
+an ordinary message it goes to the user. NO_REPLY on its own line means the whole message is
+withheld, so never pair it with anything you would not want them to read.`;
 
 const HOW_YOU_WORK = `How you operate — none of this is the user's concern:
 

@@ -60,17 +60,22 @@ export interface TurnDeps {
 
 const DEFAULT_MAX_ITERATIONS = 16;
 
-/** A turn emits this — and nothing else as text — to absorb an event without messaging the owner. */
+/** A turn emits this to absorb an event without messaging the owner. It is meant to be emitted
+ *  alone, but the model often prepends private reasoning ("…no need to message yet.\n\nNO_REPLY"),
+ *  so the sentinel suppresses the WHOLE message wherever it appears as its own line — never deliver
+ *  the reasoning that leads up to a decision to stay silent. */
 export const NO_REPLY = "NO_REPLY";
 
-/** The user-facing text of an assistant message: every `text` block, minus the NO_REPLY sentinel and
- *  blank blocks. `thinking`/`tool_use`/`compaction` blocks are internal and never delivered. */
+/** The user-facing text of an assistant message. Empty when the model signaled silence (a NO_REPLY
+ *  token on its own line in any text block). `thinking`/`tool_use`/`compaction` blocks are internal
+ *  and never delivered. */
 function deliverableText(content: Block[]): string {
-  return content
+  const texts = content
     .filter((b) => b.type === "text")
-    .map((b) => String((b as { text?: unknown }).text ?? "").trim())
-    .filter((t) => t && t !== NO_REPLY)
-    .join("\n\n");
+    .map((b) => String((b as { text?: unknown }).text ?? ""));
+  const silenced = texts.some((t) => t.split(/\r?\n/).some((line) => line.trim() === NO_REPLY));
+  if (silenced) return "";
+  return texts.map((t) => t.trim()).filter(Boolean).join("\n\n");
 }
 
 export async function runManagerTurn(

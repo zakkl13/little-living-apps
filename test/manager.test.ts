@@ -96,6 +96,14 @@ describe("manager turn", () => {
     assert.equal(h.sent.length, 0, "the NO_REPLY sentinel suppresses delivery");
   });
 
+  it("suppresses the WHOLE message when reasoning precedes NO_REPLY (no leak)", async () => {
+    const h = makeHarness();
+    // Observed live: the model prepends private reasoning, then NO_REPLY on its own line.
+    h.fake.push(resp([text("The worker is still running; no need to message the user yet.\n\nNO_REPLY")]));
+    await h.send("kick off the work");
+    assert.equal(h.sent.length, 0, "reasoning leading up to NO_REPLY must never be delivered");
+  });
+
   it("delivers an acknowledgement alongside a tool call, then the result", async () => {
     const h = makeHarness();
     h.fake.push(
