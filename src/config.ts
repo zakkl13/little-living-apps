@@ -18,13 +18,27 @@ export interface Config {
   port: number;
   /** Public HTTPS base URL of the Sprite, used to register the webhook. Empty = manual. */
   publicUrl: string;
+  /** Holds project repos that workers operate on (DESIGN §10). */
   workspaceDir: string;
-  sessionStorePath: string;
   sandboxMode: SandboxMode;
   /** Telegram Bot API base URL; overridden in tests. */
   telegramApiBaseUrl: string;
   /** Absolute path to a specific codex binary for the SDK; undefined = SDK default. */
   codexPathOverride?: string;
+
+  // --- v0.2 manager tier (DESIGN §10) ---
+  /** Anthropic API key — the manager's only paid plane. Required in v0.2. */
+  anthropicApiKey: string;
+  /** Manager memory repo, exposed to the memory tool as /memories (git markdown + FTS). */
+  memoryDir: string;
+  /** Transcript + queue snapshots for cold-wake recovery (DESIGN §11). */
+  managerStateDir: string;
+  /** Opus-class model driving the manager loop. */
+  managerModel: string;
+  /** Cheap model for condensing over-long worker output + idle memory hygiene. */
+  utilityModel: string;
+  /** Anthropic Messages base URL; overridden in tests to point at a fake (no real API). */
+  anthropicBaseUrl?: string;
 }
 
 export class ConfigError extends Error {}
@@ -69,6 +83,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const telegramBotToken = required(env, "TELEGRAM_BOT_TOKEN");
   const allowedUserIds = parseUserIds(required(env, "ALLOWED_USER_IDS"));
   const webhookSecret = required(env, "TELEGRAM_WEBHOOK_SECRET");
+  const anthropicApiKey = required(env, "ANTHROPIC_API_KEY");
 
   const sandboxRaw = (env.CODEX_SANDBOX_MODE ?? "danger-full-access").trim() as SandboxMode;
   if (!SANDBOX_MODES.includes(sandboxRaw)) {
@@ -95,13 +110,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     port,
     publicUrl: (env.PUBLIC_URL?.trim() ?? "").replace(/\/+$/, ""),
     workspaceDir: env.WORKSPACE_DIR?.trim() || "/workspace/project",
-    sessionStorePath: env.SESSION_STORE_PATH?.trim() || "/workspace/.sessions.json",
     sandboxMode: sandboxRaw,
     telegramApiBaseUrl: (env.TELEGRAM_API_BASE_URL?.trim() || "https://api.telegram.org").replace(
       /\/+$/,
       "",
     ),
     ...(codexPathOverride ? { codexPathOverride } : {}),
+
+    anthropicApiKey,
+    memoryDir: env.MEMORY_DIR?.trim() || "/workspace/.manager/memory",
+    managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/workspace/.manager/state",
+    managerModel: env.MANAGER_MODEL?.trim() || "claude-opus-4-8",
+    utilityModel: env.UTILITY_MODEL?.trim() || "claude-haiku-4-5",
+    ...(env.ANTHROPIC_BASE_URL?.trim() ? { anthropicBaseUrl: env.ANTHROPIC_BASE_URL.trim() } : {}),
   };
 }
 

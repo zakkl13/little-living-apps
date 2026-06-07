@@ -10,8 +10,8 @@
 
 import { spawn } from "node:child_process";
 import { Codex, type ThreadItem } from "@openai/codex-sdk";
-import type { Config } from "./config.js";
-import { logger } from "./logger.js";
+import type { Config } from "../config.js";
+import { logger } from "../logger.js";
 
 export interface CodexTurn {
   ok: boolean;
@@ -27,6 +27,10 @@ export interface CodexRunArgs {
   prompt: string;
   resumeThreadId?: string;
   onProgress?: ProgressFn;
+  /** Abort the in-flight turn (drives subagent_steer = abort+resume, and subagent_cancel). */
+  signal?: AbortSignal;
+  /** Fired as soon as the thread id is known, so the orchestrator can resume/steer it later. */
+  onThreadId?: (id: string) => void;
 }
 
 export interface CodexRunner {
@@ -91,7 +95,7 @@ export function createCodexRunner(config: Config): CodexRunner {
   };
 
   return {
-    async run({ prompt, resumeThreadId, onProgress }: CodexRunArgs): Promise<CodexTurn> {
+    async run({ prompt, resumeThreadId, onProgress, signal, onThreadId }: CodexRunArgs): Promise<CodexTurn> {
       const thread = resumeThreadId
         ? codex.resumeThread(resumeThreadId, threadOptions)
         : codex.startThread(threadOptions);
@@ -99,7 +103,8 @@ export function createCodexRunner(config: Config): CodexRunner {
       logger.debug("Codex turn", { resume: Boolean(resumeThreadId), cwd: config.workspaceDir });
 
       try {
-        const { events } = await thread.runStreamed(prompt);
+        const { events } = await thread.runStreamed(prompt, signal ? { signal } : undefined);
+        if (thread.id && onThreadId) onThreadId(thread.id);
         const agentMessages: string[] = [];
         let failure: string | undefined;
 

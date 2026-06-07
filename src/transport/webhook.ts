@@ -1,16 +1,30 @@
-// Webhook transport (SPEC §6 webhook column, §7). A node:http server that Telegram POSTs
-// updates to. Verifies both the unguessable path AND the X-Telegram-Bot-Api-Secret-Token
-// header before processing. Responds 200 immediately and runs Codex asynchronously, since a
-// Codex turn can take far longer than Telegram's webhook timeout.
+// Webhook transport (DESIGN §8). A node:http server Telegram POSTs updates to. Verifies both the
+// unguessable path AND the X-Telegram-Bot-Api-Secret-Token header before processing. Responds 200
+// immediately and hands the update to `onUpdate` — which in v0.2 ENQUEUES an owner_message event
+// and returns (no Codex on the webhook path anymore). The manager loop drains it out of band.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { handleUpdate, type HandlerDeps, type TelegramUpdate } from "./handler.js";
-import { logger } from "./logger.js";
+import { logger } from "../logger.js";
+
+export interface TelegramMessage {
+  message_id: number;
+  text?: string;
+  chat: { id: number };
+  from?: { id: number; username?: string; first_name?: string };
+}
+
+export interface TelegramUpdate {
+  update_id?: number;
+  message?: TelegramMessage;
+  edited_message?: TelegramMessage;
+}
 
 export interface WebhookServerOptions {
   port: number;
   path: string;
   secret: string;
+  /** Called for each verified update. Must be fast and non-throwing (it enqueues and returns). */
+  onUpdate: (update: TelegramUpdate) => void;
 }
 
 export interface RunningServer {
@@ -20,12 +34,9 @@ export interface RunningServer {
 
 const MAX_BODY_BYTES = 1_000_000; // Telegram updates are small; cap to avoid abuse.
 
-export async function startWebhookServer(
-  deps: HandlerDeps,
-  opts: WebhookServerOptions,
-): Promise<RunningServer> {
+export async function startWebhookServer(opts: WebhookServerOptions): Promise<RunningServer> {
   const server = createServer((req, res) => {
-    handleRequest(req, res, deps, opts).catch((err) => {
+    handleRequest(req, res, opts).catch((err) => {
       logger.error("Webhook request error", { error: (err as Error).message });
       if (!res.headersSent) sendStatus(res, 500, "internal error");
     });
@@ -36,16 +47,13 @@ export async function startWebhookServer(
   return {
     port,
     close: () =>
-      new Promise<void>((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve())),
-      ),
+      new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }
 
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  deps: HandlerDeps,
   opts: WebhookServerOptions,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -61,9 +69,8 @@ async function handleRequest(
     return;
   }
 
-  // Verify Telegram's secret token header (SPEC §6 security row).
-  const headerSecret = req.headers["x-telegram-bot-api-secret-token"];
-  if (headerSecret !== opts.secret) {
+  // Verify Telegram's secret token header (DESIGN §8 security).
+  if (req.headers["x-telegram-bot-api-secret-token"] !== opts.secret) {
     logger.warn("Rejected webhook with bad secret token");
     sendStatus(res, 401, "unauthorized");
     return;
@@ -77,11 +84,13 @@ async function handleRequest(
     return;
   }
 
-  // Acknowledge to Telegram immediately; process out of band.
+  // Acknowledge immediately; enqueue out of band (the loop drains it).
   sendStatus(res, 200, "{}");
-  void handleUpdate(update, deps).catch((err) =>
-    logger.error("handleUpdate failed", { error: (err as Error).message }),
-  );
+  try {
+    opts.onUpdate(update);
+  } catch (err) {
+    logger.error("onUpdate failed", { error: (err as Error).message });
+  }
 }
 
 function readBody(req: IncomingMessage): Promise<string> {

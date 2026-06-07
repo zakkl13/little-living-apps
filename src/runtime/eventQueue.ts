@@ -1,0 +1,84 @@
+// The single durable queue that feeds the serialized manager loop (DESIGN §3). Two producers —
+// owner messages (from the webhook) and worker-completion events (from the orchestrator) — plus
+// optional idle ticks. One consumer drains it, one turn at a time. Serializing turns is the core
+// invariant that keeps memory + transcript coherent without locks.
+//
+// The queue is in-memory; persistence (queue.json) is layered on by snapshot.ts (DESIGN §11) via
+// snapshot()/load(). An onEnqueue listener lets the loop wake reactively.
+
+let seq = 0;
+function nextId(): string {
+  seq += 1;
+  return `evt_${Date.now().toString(36)}_${seq}`;
+}
+
+export interface OwnerMessageEvent {
+  kind: "owner_message";
+  id: string;
+  chatId: number;
+  text: string;
+}
+export interface WorkerEvent {
+  kind: "worker_event";
+  id: string;
+  workerId: string;
+  status: "completed" | "failed";
+  summary: string;
+}
+export interface TickEvent {
+  kind: "tick";
+  id: string;
+}
+export type ManagerEvent = OwnerMessageEvent | WorkerEvent | TickEvent;
+
+export type NewEvent =
+  | Omit<OwnerMessageEvent, "id">
+  | Omit<WorkerEvent, "id">
+  | Omit<TickEvent, "id">;
+
+export interface EventQueue {
+  enqueue(event: NewEvent): ManagerEvent;
+  dequeue(): ManagerEvent | undefined;
+  peek(): ManagerEvent | undefined;
+  size(): number;
+  isEmpty(): boolean;
+  snapshot(): ManagerEvent[];
+  load(events: ManagerEvent[]): void;
+  onEnqueue(cb: (event: ManagerEvent) => void): void;
+}
+
+export function createEventQueue(): EventQueue {
+  const items: ManagerEvent[] = [];
+  const listeners: Array<(event: ManagerEvent) => void> = [];
+
+  return {
+    enqueue(event) {
+      const full = { ...event, id: nextId() } as ManagerEvent;
+      items.push(full);
+      for (const cb of listeners) cb(full);
+      return full;
+    },
+    dequeue() {
+      return items.shift();
+    },
+    peek() {
+      return items[0];
+    },
+    size() {
+      return items.length;
+    },
+    isEmpty() {
+      return items.length === 0;
+    },
+    snapshot() {
+      return items.map((e) => ({ ...e }));
+    },
+    load(events) {
+      items.length = 0;
+      items.push(...events);
+    },
+    onEnqueue(cb) {
+      listeners.push(cb);
+    },
+  };
+}

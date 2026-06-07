@@ -1,0 +1,178 @@
+// The async worker tier (DESIGN §6). Implements the Orchestrator interface the manager's
+// subagent_* tools call. Every start/send/steer returns a handle IMMEDIATELY and runs the Codex
+// worker in the background; when a run settles, a worker_event is pushed onto the queue, which
+// triggers a later manager turn that narrates the outcome. This is what keeps long builds from
+// freezing the conversation.
+//
+// Steering is abort+resume (the TS SDK exposes no mid-turn steer): we abort the in-flight run and
+// immediately resume the same thread with new guidance. Supersession is detected by comparing the
+// settling run's AbortController against the worker's current one — an aborted-for-steer run is a
+// transition, not a completion, so it emits no event.
+
+import { join } from "node:path";
+
+import type { CodexRunner } from "./runner.js";
+import { createWorkerRegistry, type WorkerRegistry } from "./registry.js";
+import type { Orchestrator, WorkerInfo } from "../manager/tools/orchestration.js";
+import type { SpriteHold } from "../runtime/hold.js";
+import { clipSummarizer, type Summarize } from "./summarize.js";
+import { logger } from "../logger.js";
+
+export interface OrchestratorDeps {
+  runner: CodexRunner;
+  hold: SpriteHold;
+  /** Default project dir (workspace) when a worker is started without an explicit project. */
+  workspaceDir: string;
+  /** Push a worker-completion event onto the manager queue. */
+  emitEvent: (event: { workerId: string; status: "completed" | "failed"; summary: string }) => void;
+  /** Condense over-long worker output (default: clip). */
+  summarize?: Summarize;
+  /** Called whenever the worker set changes, to mirror it into system/workers.md. */
+  onWorkersChanged?: (workers: WorkerInfo[]) => void;
+}
+
+export interface WorkerOrchestrator extends Orchestrator {
+  registry: WorkerRegistry;
+  /** Resolve once every in-flight run has settled (test helper). */
+  whenQuiet(): Promise<void>;
+  activeCount(): number;
+}
+
+export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
+  const registry = createWorkerRegistry();
+  const summarize = deps.summarize ?? clipSummarizer();
+  const inflight = new Set<Promise<void>>();
+  let counter = 0;
+
+  function ensureHold(id: string): void {
+    const rec = registry.get(id);
+    if (rec && !rec.holding) {
+      rec.holding = true;
+      void deps.hold.acquire();
+    }
+  }
+  function dropHold(id: string): void {
+    const rec = registry.get(id);
+    if (rec && rec.holding) {
+      rec.holding = false;
+      void deps.hold.release();
+    }
+  }
+  function mirror(): void {
+    deps.onWorkersChanged?.(registry.infos());
+  }
+
+  /** Launch (or relaunch) a run for a worker; non-blocking. */
+  function launch(id: string, prompt: string, resume: boolean): void {
+    const rec = registry.get(id);
+    if (!rec) return;
+    const abort = new AbortController();
+    rec.currentAbort = abort;
+    rec.status = "running";
+    ensureHold(id);
+
+    const promise = deps.runner
+      .run({
+        prompt,
+        ...(resume && rec.threadId ? { resumeThreadId: rec.threadId } : {}),
+        signal: abort.signal,
+        onThreadId: (tid) => {
+          const r = registry.get(id);
+          if (r) r.threadId = tid;
+        },
+      })
+      .then(
+        (turn) => settle(id, abort, turn.ok, turn.threadId, turn.finalResponse),
+        (err: Error) => settle(id, abort, false, undefined, err.message),
+      )
+      .finally(() => {
+        inflight.delete(promise);
+      });
+    inflight.add(promise);
+  }
+
+  async function settle(
+    id: string,
+    abort: AbortController,
+    ok: boolean,
+    threadId: string | undefined,
+    output: string,
+  ): Promise<void> {
+    const rec = registry.get(id);
+    if (!rec) return;
+    // Superseded by a steer/cancel: this run was aborted to make way for another → a transition,
+    // not a terminal event. Stay silent.
+    if (rec.currentAbort !== abort) return;
+
+    if (threadId) rec.threadId = threadId;
+    const summary = ok ? await summarize(output) : output;
+    rec.latest = summary;
+    rec.status = ok ? "idle" : "failed";
+    rec.currentAbort = undefined;
+    dropHold(id);
+    mirror();
+    deps.emitEvent({ workerId: id, status: ok ? "completed" : "failed", summary });
+  }
+
+  const orch: WorkerOrchestrator = {
+    registry,
+    activeCount: () => registry.activeCount(),
+
+    start(objective, project) {
+      counter += 1;
+      const id = `w${counter}`;
+      const projectDir = project ? join(deps.workspaceDir, project) : deps.workspaceDir;
+      registry.add({ id, purpose: objective, project: projectDir });
+      logger.debug("Worker start", { id, project: projectDir });
+      launch(id, objective, false);
+      mirror();
+      return registry.info(id)!;
+    },
+
+    send(id, message) {
+      const rec = registry.get(id);
+      if (!rec) throw new Error(`no such worker: ${id}`);
+      launch(id, message, true);
+      mirror();
+      return registry.info(id)!;
+    },
+
+    steer(id, guidance) {
+      const rec = registry.get(id);
+      if (!rec) throw new Error(`no such worker: ${id}`);
+      const old = rec.currentAbort;
+      // Launch the resume FIRST (sets a new currentAbort) so the old run's settle is recognized as
+      // superseded, THEN abort the old run.
+      launch(id, guidance, true);
+      old?.abort();
+      mirror();
+      return registry.info(id)!;
+    },
+
+    cancel(id) {
+      const rec = registry.get(id);
+      if (!rec) throw new Error(`no such worker: ${id}`);
+      const old = rec.currentAbort;
+      rec.currentAbort = undefined; // any pending settle for `old` is now superseded → silent
+      rec.status = "canceled";
+      old?.abort();
+      dropHold(id);
+      mirror();
+      return registry.info(id)!;
+    },
+
+    poll(id) {
+      const info = registry.info(id);
+      if (!info) return undefined;
+      return { info, ...(registry.get(id)!.latest ? { latest: registry.get(id)!.latest } : {}) };
+    },
+
+    list: () => registry.infos(),
+
+    async whenQuiet() {
+      while (inflight.size > 0) await Promise.all([...inflight]);
+    },
+  };
+
+  return orch;
+}

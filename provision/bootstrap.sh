@@ -54,13 +54,26 @@ if [[ ! -d "$WORKSPACE_DIR/.git" ]]; then
   git -C "$WORKSPACE_DIR" config user.name "Codex Sprite Bot" || true
 fi
 
-# --- Drop AGENTS.md at the repo root ----------------------------------------------------------
-if [[ -f "$REPO_DIR/AGENTS.md" ]]; then
+# --- Drop worker standing rules + memory-bank templates (DESIGN §6) ---------------------------
+# Workers load AGENTS.md automatically; the memory-bank/ is their per-codebase durable memory.
+if [[ -f "$REPO_DIR/provision/AGENTS.md" ]]; then
+  cp "$REPO_DIR/provision/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
+  log "Placed worker AGENTS.md in $WORKSPACE_DIR"
+elif [[ -f "$REPO_DIR/AGENTS.md" ]]; then
   cp "$REPO_DIR/AGENTS.md" "$WORKSPACE_DIR/AGENTS.md"
-  log "Placed AGENTS.md in $WORKSPACE_DIR"
+  log "Placed repo AGENTS.md in $WORKSPACE_DIR (worker rules not found)"
 else
-  log "WARNING: $REPO_DIR/AGENTS.md not found; skipping (place it manually)."
+  log "WARNING: no AGENTS.md found; skipping (place it manually)."
 fi
+
+if [[ -d "$REPO_DIR/provision/memory-bank" && ! -d "$WORKSPACE_DIR/memory-bank" ]]; then
+  cp -r "$REPO_DIR/provision/memory-bank" "$WORKSPACE_DIR/memory-bank"
+  log "Seeded memory-bank/ templates in $WORKSPACE_DIR"
+fi
+
+# --- Manager memory + state dirs (persistent volume) ------------------------------------------
+mkdir -p "${MEMORY_DIR:-/workspace/.manager/memory}" "${MANAGER_STATE_DIR:-/workspace/.manager/state}"
+log "Manager memory dir: ${MEMORY_DIR:-/workspace/.manager/memory}"
 
 # --- Auth assertion (SPEC §10.4) --------------------------------------------------------------
 # Path A: run `CODEX_HOME=$CODEX_HOME codex login --device-auth` interactively before this.
