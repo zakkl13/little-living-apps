@@ -6,7 +6,6 @@ import { loadConfig, ConfigError } from "./config.js";
 import { createTelegramClient } from "./transport/telegram.js";
 import { startWebhookServer } from "./transport/webhook.js";
 import { createCodexRunner } from "./workers/runner.js";
-import { modelSummarizer } from "./workers/summarize.js";
 import { createSpriteHold } from "./runtime/hold.js";
 import { createAnthropicModel } from "./manager/anthropic.js";
 import { createManagerApp } from "./app.js";
@@ -39,10 +38,9 @@ async function main(): Promise<void> {
     model,
     runner,
     hold: createSpriteHold(),
-    notify: async (chatId, text) => {
+    deliver: async (chatId, text) => {
       await telegram.sendMessage(chatId, text);
     },
-    summarize: modelSummarizer(model, { modelName: config.utilityModel }),
   });
 
   // Boot probe: surface Codex auth problems loudly rather than failing silently (DESIGN §10).

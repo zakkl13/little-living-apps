@@ -9,7 +9,7 @@ import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { openSnapshotStore, type ManagerSnapshot } from "../src/runtime/snapshot.js";
 import { noopHold } from "../src/runtime/hold.js";
 import { makeFakeCodex } from "./fakes/fakeCodex.js";
-import { makeFakeAnthropic, resp, toolUse, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
+import { makeFakeAnthropic, resp, text, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
 import { buildConfig, ALLOWED_USER_ID } from "./helpers.js";
 import type { Config } from "../src/config.js";
 
@@ -25,7 +25,7 @@ function buildApp(config: Config, fake: FakeAnthropic): { app: ManagerApp; sent:
     model: fake,
     runner: makeFakeCodex(),
     hold: noopHold,
-    notify: async (_chatId, t) => {
+    deliver: async (_chatId, t) => {
       sent.push({ text: t });
     },
   });
@@ -61,7 +61,7 @@ describe("cold-wake recovery (DESIGN §11)", () => {
     const config = buildConfig();
 
     // --- app instance #1: one turn that produces a compaction block, then dies ---
-    const fake1 = makeFakeAnthropic([resp([compaction("cmp_LIVE"), toolUse("notify_user", { text: "ack" })]), resp([])]);
+    const fake1 = makeFakeAnthropic([resp([compaction("cmp_LIVE"), text("ack")])]);
     const { app: app1, sent: sent1 } = buildApp(config, fake1);
     app1.start();
     app1.enqueueOwner(ALLOWED_USER_ID, "first message");
@@ -75,7 +75,7 @@ describe("cold-wake recovery (DESIGN §11)", () => {
     assert.ok(compactionOnDisk, "compaction block persisted to snapshot");
 
     // --- app instance #2: fresh process, same dirs → restore and continue ---
-    const fake2 = makeFakeAnthropic([resp([toolUse("notify_user", { text: "continued" })]), resp([])]);
+    const fake2 = makeFakeAnthropic([resp([text("continued")])]);
     const { app: app2, sent: sent2 } = buildApp(config, fake2);
     app2.restore();
     app2.start();
@@ -100,7 +100,7 @@ describe("cold-wake recovery (DESIGN §11)", () => {
     await app1.close();
 
     // New instance restores the pending event and drains it on start.
-    const fake2 = makeFakeAnthropic([resp([toolUse("notify_user", { text: "drained on restart" })]), resp([])]);
+    const fake2 = makeFakeAnthropic([resp([text("drained on restart")])]);
     const { app: app2, sent } = buildApp(config, fake2);
     app2.restore();
     app2.start();

@@ -362,7 +362,8 @@ function seedScaffold(dir: string): void {
         description: "who the manager is and how it works",
         body:
           "The manager plans, remembers, and delegates to Codex workers. It has no shell/file/net\n" +
-          "tools of its own — its only hands are the worker, memory, and notify tools.\n",
+          "tools of its own — its only hands are the worker and memory tools. It speaks to the owner\n" +
+          "simply by writing an ordinary message.\n",
       }),
     );
   }

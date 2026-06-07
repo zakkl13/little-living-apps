@@ -1,10 +1,12 @@
 // One manager turn (DESIGN §3, §4). Pop an event → append to the transcript → call the model in a
-// tool loop (execute tool_use, append tool_result, call again) → on end_turn deliver any text to
-// the owner. The full response.content is appended VERBATIM every iteration, which is the
-// compaction round-trip contract (compaction/thinking blocks pass through untouched).
+// tool loop (execute tool_use, append tool_result, call again) → end the turn when the model stops
+// calling tools. The manager's plain `text` blocks ARE its reply to the owner: every iteration we
+// deliver them straight to Telegram. Private reasoning lives in `thinking` blocks (never delivered);
+// a turn stays silent by emitting only the NO_REPLY sentinel. The full response.content is appended
+// VERBATIM every iteration, which is the compaction round-trip contract (compaction/thinking blocks
+// pass through untouched) — delivery only reads text blocks, it never mutates content.
 
 import {
-  textOf,
   toolUses,
   type Block,
   type ManagerModel,
@@ -40,20 +42,36 @@ export function createTranscript(initial: ModelMessage[] = []): Transcript {
   };
 }
 
+/** Delivers the manager's user-facing text to the owner's chat (wraps Telegram sendMessage). */
+export type DeliverFn = (chatId: number, text: string) => Promise<void>;
+
 export interface TurnDeps {
   model: ManagerModel;
   modelName: string;
   registry: ToolRegistry;
   transcript: Transcript;
+  /** The owner's reply channel: the manager's plain text is sent here (DESIGN §4, §9). */
+  deliver: DeliverFn;
   /** Rebuilt fresh each iteration so memory edits made mid-turn are reflected immediately. */
   buildSystem: () => string;
-  /** Fallback delivery for end_turn text (notify_user is the preferred path). */
-  deliver: (chatId: number, text: string) => Promise<void>;
   onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
   maxIterations?: number;
 }
 
 const DEFAULT_MAX_ITERATIONS = 16;
+
+/** A turn emits this — and nothing else as text — to absorb an event without messaging the owner. */
+export const NO_REPLY = "NO_REPLY";
+
+/** The user-facing text of an assistant message: every `text` block, minus the NO_REPLY sentinel and
+ *  blank blocks. `thinking`/`tool_use`/`compaction` blocks are internal and never delivered. */
+function deliverableText(content: Block[]): string {
+  return content
+    .filter((b) => b.type === "text")
+    .map((b) => String((b as { text?: unknown }).text ?? "").trim())
+    .filter((t) => t && t !== NO_REPLY)
+    .join("\n\n");
+}
 
 export async function runManagerTurn(
   event: ManagerEvent,
@@ -75,12 +93,13 @@ export async function runManagerTurn(
     // Append the assistant message verbatim — including compaction/thinking blocks (DESIGN §4).
     deps.transcript.append({ role: "assistant", content: res.content });
 
+    // The manager's plain text IS its reply — deliver it now. Done every iteration (not just at
+    // end-of-turn) so an acknowledgement can reach the owner before the work it kicked off finishes.
+    const reply = deliverableText(res.content);
+    if (reply) await deps.deliver(chatId, reply);
+
     const uses = toolUses(res.content);
-    if (uses.length === 0) {
-      const text = textOf(res.content);
-      if (text) await deps.deliver(chatId, text);
-      return;
-    }
+    if (uses.length === 0) return; // end of turn — any reply was already delivered above
 
     const results: Block[] = [];
     for (const use of uses) {

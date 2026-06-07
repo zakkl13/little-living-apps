@@ -10,7 +10,7 @@ export interface ToolResult {
 }
 
 export interface ToolHandlerCtx {
-  /** The owner chat this turn is serving (for notify_user and worker attribution). */
+  /** The owner chat this turn is serving (worker attribution / logging). */
   chatId: number;
 }
 

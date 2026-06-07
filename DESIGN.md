@@ -35,7 +35,7 @@ by token, a web UI, peer-to-peer worker coordination (designed-for, not built �
                 ┌──────────────────── Sprite Service (bot process) ─────────────────────┐
  Telegram ─────▶│ webhook ─┐                                                             │
   (owner)       │          ├─▶ EVENT QUEUE ─▶ manager turn (SERIALIZED) ──┐             │
- notify_user ◀──│ worker  ─┘   owner_msg | worker_event | tick            │             │
+ reply  text ◀──│ worker  ─┘   owner_msg | worker_event | tick            │             │
                 │ events ◀─────────────────────────┐                      ▼             │
                 │                                   │              Anthropic Messages    │
                 │                                   │              (Opus) tool loop      │
@@ -43,7 +43,7 @@ by token, a web UI, peer-to-peer worker coordination (designed-for, not built �
                 │   ┌── tools (the ONLY hands) ─────┼──────────────────────┘             │
                 │   │ memory_*        → MemFS (markdown + git) + node:sqlite FTS          │
                 │   │ subagent_*      → Codex workers (async, parallel; start/send/steer)  │
-                │   │ notify_user     → Telegram                                          │
+                │   │ (no comms tool) → the manager's plain text IS the reply (§4)         │
                 │   └────────────────────────────────────────────────────────────────── │
                 │   workers run in the SHARED tree, within prompt-assigned scopes (§7)    │
                 │   keep-alive hold held while: queue non-empty ∨ worker active ∨ turn    │
@@ -62,7 +62,9 @@ Workers run *outside* the turn, in parallel, and re-enter as events.
 2. Build the Anthropic request (system = persona + rules + core memory; messages = recall summary
    block + working transcript; tools = the registry).
 3. Call Opus. While the response contains `tool_use`: execute each tool, append `tool_result`,
-   call again. On `end_turn` text → deliver to the owner via `notify_user`/reply.
+   call again. The manager's plain `text` blocks ARE the reply: deliver them to the owner each
+   iteration (so an ack can land before the work finishes). `thinking` blocks stay private; a turn
+   stays silent by emitting only the `NO_REPLY` sentinel.
 4. Snapshot transcript + queue to disk. Update the keep-alive hold. Context-window growth is
    handled by **server-side compaction** (no manual truncation); an optional idle memory-hygiene
    tick (§5) is separate and lighter.
@@ -94,7 +96,9 @@ messages, retries, and streaming. Three betas carry the hard parts so we don't h
 - **Memory tool** — `memory_20250818` is the model's memory interface; we own the backend (§5).
 
 Loop: build request (system + core memory + tools) → call Opus → while `tool_use`, execute tools,
-append `tool_result`, call again → on `end_turn` text, deliver via `notify_user`/reply.
+append `tool_result`, call again. The manager's plain `text` blocks are delivered to the owner each
+iteration (Hermes/Letta-v1 style: there is no `notify_user` tool — staying in-distribution with how
+the models emit assistant text). `thinking` blocks are private; the `NO_REPLY` sentinel buys silence.
 
 - **Models:** `MANAGER_MODEL` = `claude-opus-4-8`; `UTILITY_MODEL` = `claude-haiku-4-5` (condensing
   over-long worker output, idle memory-hygiene summaries). Adaptive thinking (`thinking:{type:
@@ -239,7 +243,7 @@ no longer runs Codex — it **enqueues an `owner_message` event** and 200s immed
 |---|---|
 | **Worker orchestration** | `subagent_start`, `subagent_send`, `subagent_steer`, `subagent_poll`, `subagent_list`, `subagent_cancel` |
 | **Memory** | `memory` (native `memory_20250818` — CRUD over `/memories`, MemFS-backed) + our `memory_search`, `recall_search` |
-| **Owner comms** | `notify_user` |
+| **Owner comms** | *(none — the manager's plain `text` is its reply; `NO_REPLY` stays silent. §4)* |
 
 > Coordination is **prompt-only** in v0.2 (no `lease_*` tools). See §7.
 
@@ -274,8 +278,11 @@ nothing. Memory is the *semantic* truth; snapshots are crash recovery.
 
 ## 12. Failure modes
 
-- **Manager turn crashes** → event stays/redrives; snapshot is pre-turn; owner gets an error via
-  `notify_user`.
+- **Manager turn crashes** → event stays/redrives; snapshot is pre-turn; owner gets an error reply.
+- **Reasoning leaks as a reply** → since plain text now reaches the owner, sloppy "think out loud"
+  text would be delivered. Mitigation: adaptive `thinking` gives the model a private channel, the
+  prompt forbids narration, and `NO_REPLY` is the explicit silence path. No dedup needed — there is
+  only one channel, so a turn cannot both tool-send and end-turn-send the same line.
 - **Worker crashes / non-zero** → `worker_event(failed, detail)`; manager decides (retry, re-scope,
   ask owner). Auth-flavored failures surface the re-login hint (as today).
 - **Cold wake mid-build** → hold should prevent it; if force-killed, threads persist → re-poll.
@@ -289,7 +296,7 @@ nothing. Memory is the *semantic* truth; snapshots are crash recovery.
 Every boundary stays injectable, so the **real** runtime loop runs against fakes:
 - **`fakeAnthropic`** — a scripted Messages client returning predetermined `tool_use` / text (and
   optional `compaction` blocks) so we drive deterministic manager behavior ("owner says build X →
-  emit `subagent_start` → … → `notify_user`") and assert compaction-block round-tripping.
+  emit `subagent_start` → … → plain-text reply") and assert compaction-block round-tripping.
 - **`fakeCodex`** — the in-process `CodexRunner` fake we already have.
 - **`fakeTelegram`** — records `sendMessage`/`editMessageText` (already have).
 - **Memory** — the memory-tool handlers + FTS exercised against the **real** `node:sqlite` + a
@@ -297,7 +304,7 @@ Every boundary stays injectable, so the **real** runtime loop runs against fakes
 - **Sprite** — a local process; the keep-alive hold no-ops off-Sprite (already built).
 
 Headline e2e: owner message → manager turn → `subagent_start` (parallel ×2, prompt-scoped) →
-workers complete → `worker_event`s → manager narrates → `notify_user`; assert memory-tool writes
+workers complete → `worker_event`s → manager narrates as plain text → Telegram; assert memory-tool writes
 land in MemFS, compaction blocks round-trip, and snapshot/restore survives a simulated cold wake.
 
 ## 14. Proposed file tree / modules
@@ -330,7 +337,6 @@ src/
       registry.ts           # tool schemas + dispatch table (the manager's only capability)
       orchestration.ts      # subagent_start/send/steer/poll/list/cancel
       memory.ts             # native `memory` tool (betaMemoryTool→MemFS) + memory_search/recall_search
-      notify.ts             # notify_user → telegram
 
   memory/
     memfs.ts                # MemFS backend for the memory tool: /memories ↔ files + frontmatter;
@@ -381,7 +387,7 @@ DESIGN.md  SPEC.md  README.md  AGENTS.md  .env.example
    git changelog + `memory_search`/`recall_search`, tested standalone against real sqlite/tmp-git.
 2. **Manager loop skeleton** — `anthropic.ts` (`@anthropic-ai/sdk` + compaction/context-editing
    betas) + `loop.ts` + `eventQueue.ts` with a stub worker; owner message → manager →
-   `notify_user`; assert compaction blocks round-trip. No real Codex yet.
+   plain-text reply; assert compaction blocks round-trip. No real Codex yet.
 3. **Worker orchestration** — wire `subagent_*` to the existing `CodexRunner`; single worker,
    async completion events, plus `subagent_steer`/`subagent_cancel` (abort + resume).
 4. **Parallel workers** — multiple async workers with prompt-assigned, non-overlapping scopes

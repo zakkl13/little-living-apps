@@ -1,6 +1,6 @@
 // Composition root for the v0.2 manager runtime (DESIGN §2 topology). Wires the memory subsystem,
 // the worker orchestrator, the tool registry, the serialized loop, and crash snapshots into one
-// object. Boundaries (model, runner, hold, notify) are injected so the whole runtime runs against
+// object. Boundaries (model, runner, hold, deliver) are injected so the whole runtime runs against
 // fakes in tests and real SDKs in production — the same seam discipline as v0.1.
 
 import type { Config } from "./config.js";
@@ -10,10 +10,9 @@ import { openMemFs, type MemFs } from "./memory/memfs.js";
 import type { ManagerModel } from "./manager/anthropic.js";
 import { buildRegistry } from "./manager/tools/registry.js";
 import { memoryToolModule } from "./manager/tools/memory.js";
-import { notifyToolModule, type NotifyFn } from "./manager/tools/notify.js";
 import { orchestrationToolModule, type WorkerInfo } from "./manager/tools/orchestration.js";
 import { buildSystemPrompt } from "./manager/prompt.js";
-import { createTranscript, runManagerTurn, type Transcript } from "./manager/manager.js";
+import { createTranscript, runManagerTurn, type DeliverFn, type Transcript } from "./manager/manager.js";
 
 import { createEventQueue, type EventQueue } from "./runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "./runtime/loop.js";
@@ -30,8 +29,9 @@ export interface ManagerAppDeps {
   model: ManagerModel;
   runner: CodexRunner;
   hold: SpriteHold;
-  /** Delivery channel to the owner (wraps Telegram sendMessage). */
-  notify: NotifyFn;
+  /** Delivery channel to the owner (wraps Telegram sendMessage). The manager's reply channel, and
+   *  the sink for deterministic system replies (commands, auth refusals). */
+  deliver: DeliverFn;
   /** Optional over-long-output condenser (default: clip). */
   summarize?: Summarize;
 }
@@ -55,7 +55,7 @@ export interface ManagerApp {
 }
 
 export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
-  const { config, model, runner, hold, notify } = deps;
+  const { config, model, runner, hold, deliver } = deps;
 
   const mem = openMemFs({ dir: config.memoryDir, ftsPath: `${config.memoryDir}.fts.sqlite` });
   const transcript = createTranscript();
@@ -75,7 +75,6 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
 
   const registry = buildRegistry([
     memoryToolModule(mem),
-    notifyToolModule(notify),
     orchestrationToolModule(orchestrator),
   ]);
 
@@ -101,7 +100,7 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     switch (command) {
       case "/start":
       case "/help":
-        void notify(
+        void deliver(
           chatId,
           "🤖 Manager ready. Tell me what to build and I'll delegate to Codex workers, " +
             "remember what matters, and report back.\n\nCommands:\n/status — workers + state\n" +
@@ -116,16 +115,16 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
           `Pending events: ${queue.size()}`,
           `Memory: ${config.memoryDir}`,
         ];
-        void notify(chatId, lines.join("\n"));
+        void deliver(chatId, lines.join("\n"));
         return;
       }
       case "/new":
         transcript.load([]);
         persist();
-        void notify(chatId, "🆕 Cleared the working transcript. Long-term memory is untouched.");
+        void deliver(chatId, "🆕 Cleared the working transcript. Long-term memory is untouched.");
         return;
       default:
-        void notify(chatId, `Unknown command: ${command}. Try /help.`);
+        void deliver(chatId, `Unknown command: ${command}. Try /help.`);
     }
   }
 
@@ -148,11 +147,11 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
         modelName: config.managerModel,
         registry,
         transcript,
+        deliver,
         buildSystem: () => {
           const line = workersLine();
           return buildSystemPrompt(line ? { mem, workersLine: line } : { mem });
         },
-        deliver: notify,
       }),
     onTurnComplete: persist,
   });
@@ -174,7 +173,7 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
       // Authorize (DESIGN: single owner). Unauthorized senders get a refusal, never a turn.
       if (fromId === undefined || !config.allowedUserIds.includes(fromId)) {
         logger.warn("Rejected unauthorized update", { fromId, chatId });
-        void notify(chatId, "⛔ You are not authorized to use this bot.");
+        void deliver(chatId, "⛔ You are not authorized to use this bot.");
         return;
       }
 

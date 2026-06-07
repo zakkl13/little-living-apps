@@ -102,7 +102,7 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
     model: anthropic,
     runner: codex,
     hold,
-    notify: async (chatId, text) => {
+    deliver: async (chatId, text) => {
       await client.sendMessage(chatId, text);
     },
     summarize: clipSummarizer(),

@@ -1,6 +1,6 @@
 // Phase 3: the async worker orchestrator over the fake CodexRunner. Asserts the async lifecycle
-// (handle now, event later), steer = abort+resume, cancel, failure events, the summarize fallback,
-// and the keep-alive hold lifecycle. Plus the runner-util tests carried over from v0.1.
+// (handle now, event later), steer = abort+resume, cancel, failure events, the over-long-output
+// clip bound, and the keep-alive hold lifecycle. Plus the runner-util tests carried over from v0.1.
 
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
@@ -88,7 +88,7 @@ describe("worker orchestrator (async lifecycle)", () => {
     assert.equal(orch.registry.get(info.id)!.status, "failed");
   });
 
-  it("condenses over-long worker output via the summarize fallback", async () => {
+  it("hard-clips over-long worker output at the limit", async () => {
     const { orch, events } = harness({ summarizeLimit: 100 });
     orch.start("LONG_OUTPUT — produces a wall of text");
     await orch.whenQuiet();

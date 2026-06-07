@@ -14,16 +14,18 @@ carry over.
  Telegram ──webhook POST──▶ EVENT QUEUE ──▶ manager turn (SERIALIZED)
   (owner)                   owner_msg | worker_event | tick      │
         ▲                                                        │ Anthropic Messages (Opus)
-        │ notify_user                                            │ tool loop
+        │ reply text                                             │ tool loop
         │                    ┌── tools (the only hands) ─────────┘
         │                    │  memory  → MemFS (git markdown + sqlite FTS)
         │                    │  subagent_* → Codex workers (async, parallel, scoped)
-        └────────────────────┤  notify_user → Telegram
+        └────────────────────┤  the manager's plain text IS the reply (NO_REPLY = stay silent)
                              └── workers run in the shared tree under prompt-assigned scopes
 ```
 
 The manager has **no shell/file/network tools** — that boundary is enforced by its tool surface
-(only `memory`, `subagent_*`, `memory_search`/`recall_search`, `notify_user`). Workers have full
+(only `memory`, `subagent_*`, `memory_search`/`recall_search`). It talks to the owner with no comms
+tool at all: its plain assistant text is delivered straight to Telegram, and the `NO_REPLY` sentinel
+lets it absorb an event silently (Hermes / Letta-v1 style). Workers have full
 access under standing rules (`provision/AGENTS.md`). Everything survives Sprite cold-wake via
 per-turn snapshots + a git-backed memory repo.
 
@@ -35,7 +37,7 @@ per-turn snapshots + a git-backed memory repo.
 | `src/app.ts` | Composition root: wires memory + orchestrator + tool registry + loop + snapshots; `ingestTelegramUpdate`, `persist`/`restore`. |
 | `src/manager/anthropic.ts` | `ManagerModel` seam + real `@anthropic-ai/sdk` wrapper (compaction + context-editing betas; compaction blocks round-trip verbatim). |
 | `src/manager/manager.ts` | One serialized manager turn: event → tool loop → deliver. |
-| `src/manager/prompt.ts` · `tools/` | System prompt (persona + rules + core memory) and the tool registry (memory, orchestration, notify). |
+| `src/manager/prompt.ts` · `tools/` | System prompt (persona + rules + core memory) and the tool registry (memory, orchestration). |
 | `src/memory/` | `memfs.ts` (the `memory_20250818` backend over `/memories`), `fts.ts` (sqlite FTS5), `git.ts` (commit-per-write changelog), `block.ts`. |
 | `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (cold-wake), `hold.ts` (Sprite keep-alive). |
 | `src/workers/` | `runner.ts` (`CodexRunner` over `@openai/codex-sdk`), `orchestrator.ts` (async `subagent_*`; steer = abort+resume), `registry.ts`, `summarize.ts`. |
@@ -58,8 +60,8 @@ memory runs for real:
 - **Memory** → the **real** `node:sqlite` FTS + a **real** tmp git repo (high-fidelity).
 
 `test/e2e.test.ts` is the headline (DESIGN §13): owner message → manager turn → `subagent_start`
-×2 (parallel, prompt-scoped) → workers complete → `worker_event`s → manager narrates →
-`notify_user`; it asserts memory-tool writes land in MemFS, compaction blocks round-trip, and a
+×2 (parallel, prompt-scoped) → workers complete → `worker_event`s → manager narrates as plain
+text → Telegram; it asserts memory-tool writes land in MemFS, compaction blocks round-trip, and a
 simulated **cold wake** restores memory + transcript losslessly. Subsystem suites cover memory,
 the manager loop, workers, durability, config, and transport.
 

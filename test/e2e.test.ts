@@ -3,14 +3,14 @@
 // real serialized queue/loop, and the real webhook. Nothing is deployed.
 //
 // Scenario: owner message → manager turn → subagent_start ×2 (parallel, prompt-scoped) → workers
-// complete → worker_events → manager narrates → notify_user. Asserts memory-tool writes land in
+// complete → worker_events → manager narrates as plain text → Telegram. Asserts memory-tool writes land in
 // MemFS, compaction blocks round-trip, and a simulated cold wake loses nothing.
 
 import { strict as assert } from "node:assert";
 import { afterEach, describe, it } from "node:test";
 
 import { startBot, messageUpdate, type TestBot } from "./helpers.js";
-import { resp, toolUse, compaction } from "./fakes/fakeAnthropic.js";
+import { resp, text, toolUse, compaction } from "./fakes/fakeAnthropic.js";
 
 const bots: TestBot[] = [];
 afterEach(async () => {
@@ -32,21 +32,19 @@ describe("e2e: owner → manager → parallel workers → narrate", () => {
           toolUse("subagent_start", { objective: "work only within src/api/**", project: "proj" }),
           toolUse("subagent_start", { objective: "work only within test/**", project: "proj" }),
         ]),
-        resp([toolUse("notify_user", { text: "on it — two workers: src/api and test/" })]),
-        resp([]),
-        // Turn 2: first worker_event → record a decision in memory + narrate.
+        // …then ack as plain text, which ends the turn.
+        resp([text("on it — two workers: src/api and test/")]),
+        // Turn 2: first worker_event → record a decision in memory, then narrate it.
         resp([
           toolUse("memory", {
             command: "create",
             path: "/memories/archival/decisions/stack.md",
             file_text: "---\ndescription: web framework\n---\nChose Fastify for the API.\n",
           }),
-          toolUse("notify_user", { text: "✅ api worker done; recorded the decision" }),
         ]),
-        resp([]),
+        resp([text("✅ api worker done; recorded the decision")]),
         // Turn 3: second worker_event → narrate.
-        resp([toolUse("notify_user", { text: "✅ test worker done" })]),
-        resp([]),
+        resp([text("✅ test worker done")]),
         resp([]), // safety buffer
       ],
     });
@@ -95,7 +93,7 @@ describe("e2e: cold-wake recovery", () => {
             file_text: "---\ndescription: owner profile\n---\nOwner is zakk; prefers terse replies.\n",
           }),
           compaction("cmp_CW"),
-          toolUse("notify_user", { text: "saved your profile" }),
+          text("saved your profile"),
         ]),
         resp([]),
       ],
@@ -114,7 +112,7 @@ describe("e2e: cold-wake recovery", () => {
         MANAGER_STATE_DIR: bot1.config.managerStateDir,
         WORKSPACE_DIR: bot1.config.workspaceDir,
       },
-      script: [resp([toolUse("notify_user", { text: "still here — terse it is" })]), resp([])],
+      script: [resp([text("still here — terse it is")])],
     });
 
     await bot2.postUpdate(messageUpdate("you there?"));

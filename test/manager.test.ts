@@ -11,7 +11,6 @@ import { afterEach, describe, it } from "node:test";
 import { openMemFs, type MemFs } from "../src/memory/memfs.js";
 import { buildRegistry } from "../src/manager/tools/registry.js";
 import { memoryToolModule } from "../src/manager/tools/memory.js";
-import { notifyToolModule } from "../src/manager/tools/notify.js";
 import { orchestrationToolModule } from "../src/manager/tools/orchestration.js";
 import { createTranscript, runManagerTurn } from "../src/manager/manager.js";
 import { buildSystemPrompt } from "../src/manager/prompt.js";
@@ -42,13 +41,12 @@ function makeHarness(): Harness {
 
   const fake = makeFakeAnthropic();
   const sent: Array<{ chatId: number; text: string }> = [];
-  const notify = async (chatId: number, t: string): Promise<void> => {
+  const deliver = async (chatId: number, t: string): Promise<void> => {
     sent.push({ chatId, text: t });
   };
 
   const registry = buildRegistry([
     memoryToolModule(mem),
-    notifyToolModule(notify),
     orchestrationToolModule(), // no orchestrator in Phase 2
   ]);
   const transcript = createTranscript();
@@ -64,8 +62,8 @@ function makeHarness(): Harness {
         modelName: "test-opus",
         registry,
         transcript,
+        deliver,
         buildSystem: () => buildSystemPrompt({ mem }),
-        deliver: notify,
       }),
   });
   loop.start();
@@ -83,20 +81,33 @@ function makeHarness(): Harness {
 }
 
 describe("manager turn", () => {
-  it("delivers a reply via notify_user", async () => {
+  it("delivers the manager's plain text to the owner", async () => {
     const h = makeHarness();
-    h.fake.push(resp([toolUse("notify_user", { text: "on it 👍" })]), resp([]));
+    h.fake.push(resp([text("on it 👍")]));
     await h.send("build me a thing");
     assert.equal(h.sent.length, 1);
     assert.deepEqual(h.sent[0], { chatId: OWNER, text: "on it 👍" });
   });
 
-  it("delivers end_turn text when the model doesn't call notify_user", async () => {
+  it("stays silent when the turn emits only NO_REPLY", async () => {
     const h = makeHarness();
-    h.fake.push(resp([text("here is your answer")]));
+    h.fake.push(resp([text("NO_REPLY")]));
     await h.send("hi");
-    assert.equal(h.sent.length, 1);
-    assert.equal(h.sent[0]!.text, "here is your answer");
+    assert.equal(h.sent.length, 0, "the NO_REPLY sentinel suppresses delivery");
+  });
+
+  it("delivers an acknowledgement alongside a tool call, then the result", async () => {
+    const h = makeHarness();
+    h.fake.push(
+      // First message: ack + a tool call. The ack ships immediately; the turn continues.
+      resp([text("on it"), toolUse("memory", { command: "view", path: "/memories" })]),
+      resp([text("done")]),
+    );
+    await h.send("look something up");
+    assert.deepEqual(
+      h.sent.map((m) => m.text),
+      ["on it", "done"],
+    );
   });
 
   it("executes a memory write that lands on disk and is searchable", async () => {
@@ -109,8 +120,7 @@ describe("manager turn", () => {
           file_text: "remember the milk\n",
         }),
       ]),
-      resp([toolUse("notify_user", { text: "noted" })]),
-      resp([]),
+      resp([text("noted")]),
     );
     await h.send("remember to buy milk");
     assert.equal(h.mem.search("milk").length, 1, "memory write hit MemFs");
@@ -130,9 +140,8 @@ describe("manager turn", () => {
       (req) => {
         const last = req.messages.at(-1)!;
         const tr = last.content.find((b) => b.type === "tool_result") as unknown as { content: string };
-        return resp([toolUse("notify_user", { text: `found: ${tr.content.replace(/\n/g, " ")}` })]);
+        return resp([text(`found: ${tr.content.replace(/\n/g, " ")}`)]);
       },
-      resp([]),
     );
     await h.send("what web framework are we using?");
     assert.ok(h.sent.some((m) => /Fastify/.test(m.text)), "search hit fed back to the model");
@@ -142,8 +151,7 @@ describe("manager turn", () => {
     const h = makeHarness();
     h.fake.push(
       resp([toolUse("memory", { command: "str_replace", path: "/memories/nope.md", old_str: "a", new_str: "b" })]),
-      resp([toolUse("notify_user", { text: "that file doesn't exist; moving on" })]),
-      resp([]),
+      resp([text("that file doesn't exist; moving on")]),
     );
     await h.send("edit the missing file");
     // The 2nd request must carry a tool_result flagged is_error.
@@ -179,10 +187,8 @@ describe("serialized loop", () => {
   it("drains owner messages in order, one turn at a time", async () => {
     const h = makeHarness();
     h.fake.push(
-      resp([toolUse("notify_user", { text: "first" })]),
-      resp([]),
-      resp([toolUse("notify_user", { text: "second" })]),
-      resp([]),
+      resp([text("first")]),
+      resp([text("second")]),
     );
     await h.send("a");
     await h.send("b");

@@ -35,8 +35,6 @@ export interface Config {
   managerStateDir: string;
   /** Opus-class model driving the manager loop. */
   managerModel: string;
-  /** Cheap model for condensing over-long worker output + idle memory hygiene. */
-  utilityModel: string;
   /** Anthropic Messages base URL; overridden in tests to point at a fake (no real API). */
   anthropicBaseUrl?: string;
 }
@@ -121,7 +119,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     memoryDir: env.MEMORY_DIR?.trim() || "/workspace/.manager/memory",
     managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/workspace/.manager/state",
     managerModel: env.MANAGER_MODEL?.trim() || "claude-opus-4-8",
-    utilityModel: env.UTILITY_MODEL?.trim() || "claude-haiku-4-5",
     ...(env.ANTHROPIC_BASE_URL?.trim() ? { anthropicBaseUrl: env.ANTHROPIC_BASE_URL.trim() } : {}),
   };
 }

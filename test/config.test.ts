@@ -24,7 +24,6 @@ describe("loadConfig", () => {
     const c = loadConfig(base);
     assert.equal(c.anthropicApiKey, "sk-ant-test");
     assert.equal(c.managerModel, "claude-opus-4-8");
-    assert.equal(c.utilityModel, "claude-haiku-4-5");
     assert.match(c.memoryDir, /memory$/);
     assert.match(c.managerStateDir, /state$/);
   });
