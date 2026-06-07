@@ -25,6 +25,7 @@ export interface FtsIndex {
 
 export function openFts(dbPath = ":memory:"): FtsIndex {
   const db = new DatabaseSync(dbPath);
+  let closed = false;
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
     USING fts5(path UNINDEXED, body, tokenize = 'porter unicode61');
@@ -63,6 +64,8 @@ export function openFts(dbPath = ":memory:"): FtsIndex {
       db.exec("DELETE FROM memory_fts");
     },
     close() {
+      if (closed) return;
+      closed = true;
       db.close();
     },
   };

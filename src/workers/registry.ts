@@ -19,6 +19,16 @@ export interface WorkerRecord {
   currentAbort?: AbortController;
 }
 
+/** Durable projection of a worker for cold-wake recovery (DESIGN §11). */
+export interface WorkerSnapshot {
+  id: string;
+  purpose: string;
+  project: string;
+  status: WorkerStatus;
+  threadId?: string;
+  latest?: string;
+}
+
 export interface WorkerRegistry {
   add(rec: { id: string; purpose: string; project: string }): WorkerRecord;
   get(id: string): WorkerRecord | undefined;
@@ -27,6 +37,10 @@ export interface WorkerRegistry {
   infos(): WorkerInfo[];
   /** Workers with a run in flight (status running). */
   activeCount(): number;
+  /** Durable projection for snapshotting. */
+  snapshot(): WorkerSnapshot[];
+  /** Rehydrate from a snapshot on boot; in-flight runs are gone so statuses settle to idle. */
+  rehydrate(records: WorkerSnapshot[]): void;
 }
 
 const toInfo = (r: WorkerRecord): WorkerInfo => ({
@@ -52,5 +66,29 @@ export function createWorkerRegistry(): WorkerRegistry {
     },
     infos: () => [...workers.values()].map(toInfo),
     activeCount: () => [...workers.values()].filter((r) => r.status === "running").length,
+    snapshot: () =>
+      [...workers.values()].map((r) => ({
+        id: r.id,
+        purpose: r.purpose,
+        project: r.project,
+        status: r.status,
+        ...(r.threadId ? { threadId: r.threadId } : {}),
+        ...(r.latest ? { latest: r.latest } : {}),
+      })),
+    rehydrate(records) {
+      for (const rec of records) {
+        workers.set(rec.id, {
+          id: rec.id,
+          purpose: rec.purpose,
+          project: rec.project,
+          // A worker that was "running" before the crash has no live run now → treat as idle and
+          // reconcilable via subagent_poll (the codex thread persists server-side).
+          status: rec.status === "running" ? "idle" : rec.status,
+          holding: false,
+          ...(rec.threadId ? { threadId: rec.threadId } : {}),
+          ...(rec.latest ? { latest: rec.latest } : {}),
+        });
+      }
+    },
   };
 }
