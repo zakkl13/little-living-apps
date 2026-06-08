@@ -1,6 +1,6 @@
 // v0.2 test harness: boots the REAL manager app (real memory/git/sqlite, real loop, real webhook)
-// wired to fakes at the four external boundaries — Anthropic (scripted model), Codex (in-process
-// runner), Telegram (fake HTTP server), Sprite (counting hold). Nothing is deployed.
+// wired to fakes at the three external boundaries — Anthropic (scripted model), Codex (in-process
+// runner), Telegram (fake HTTP server). Nothing is deployed.
 
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,42 +11,12 @@ import { createTelegramClient } from "../src/transport/telegram.js";
 import { startWebhookServer, type RunningServer, type TelegramUpdate } from "../src/transport/webhook.js";
 import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { clipSummarizer } from "../src/workers/summarize.js";
-import type { SpriteHold } from "../src/runtime/hold.js";
 
 import { startFakeTelegram, type FakeTelegram } from "./fakes/fakeTelegram.js";
 import { makeFakeCodex, type FakeCodex } from "./fakes/fakeCodex.js";
 import { makeFakeAnthropic, type FakeAnthropic, type ScriptStep } from "./fakes/fakeAnthropic.js";
 
 export const ALLOWED_USER_ID = 11111111;
-
-export interface CountingHold extends SpriteHold {
-  acquired: number;
-  released: number;
-  get held(): number;
-}
-
-/** A SpriteHold that records acquire/release counts (off-Sprite there's no real socket). */
-export function makeCountingHold(): CountingHold {
-  let acquired = 0;
-  let released = 0;
-  return {
-    async acquire() {
-      acquired += 1;
-    },
-    async release() {
-      released += 1;
-    },
-    get acquired() {
-      return acquired;
-    },
-    get released() {
-      return released;
-    },
-    get held() {
-      return acquired - released;
-    },
-  };
-}
 
 export function buildConfig(overrides: Record<string, string> = {}): Config {
   const dir = mkdtempSync(join(tmpdir(), "scb-"));
@@ -73,7 +43,6 @@ export interface TestBot {
   telegram: FakeTelegram;
   anthropic: FakeAnthropic;
   codex: FakeCodex;
-  hold: CountingHold;
   url: string;
   postUpdate(update: TelegramUpdate, opts?: { secret?: string }): Promise<Response>;
   close(): Promise<void>;
@@ -83,7 +52,6 @@ export interface StartBotOptions {
   script?: ScriptStep[];
   anthropic?: FakeAnthropic;
   codex?: FakeCodex;
-  hold?: CountingHold;
   config?: Config;
   configOverrides?: Record<string, string>;
 }
@@ -95,13 +63,11 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
 
   const anthropic = opts.anthropic ?? makeFakeAnthropic(opts.script ?? []);
   const codex = opts.codex ?? makeFakeCodex();
-  const hold = opts.hold ?? makeCountingHold();
 
   const app = createManagerApp({
     config,
     model: anthropic,
     runner: codex,
-    hold,
     deliver: async (chatId, text) => {
       await client.sendMessage(chatId, text);
     },
@@ -124,7 +90,6 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
     telegram,
     anthropic,
     codex,
-    hold,
     url,
     postUpdate: (update, o) =>
       fetch(url, {

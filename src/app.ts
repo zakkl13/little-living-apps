@@ -1,6 +1,6 @@
 // Composition root for the v0.2 manager runtime (DESIGN §2 topology). Wires the memory subsystem,
 // the worker orchestrator, the tool registry, the serialized loop, and crash snapshots into one
-// object. Boundaries (model, runner, hold, deliver) are injected so the whole runtime runs against
+// object. Boundaries (model, runner, deliver) are injected so the whole runtime runs against
 // fakes in tests and real SDKs in production — the same seam discipline as v0.1.
 
 import type { Config } from "./config.js";
@@ -17,7 +17,6 @@ import { createTranscript, runManagerTurn, type DeliverFn, type Transcript } fro
 import { createEventQueue, type EventQueue } from "./runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "./runtime/loop.js";
 import { openSnapshotStore } from "./runtime/snapshot.js";
-import type { SpriteHold } from "./runtime/hold.js";
 import type { TelegramUpdate } from "./transport/webhook.js";
 
 import type { CodexRunner } from "./workers/runner.js";
@@ -28,7 +27,6 @@ export interface ManagerAppDeps {
   config: Config;
   model: ManagerModel;
   runner: CodexRunner;
-  hold: SpriteHold;
   /** Delivery channel to the owner (wraps Telegram sendMessage). The manager's reply channel, and
    *  the sink for deterministic system replies (commands, auth refusals). */
   deliver: DeliverFn;
@@ -55,7 +53,7 @@ export interface ManagerApp {
 }
 
 export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
-  const { config, model, runner, hold, deliver } = deps;
+  const { config, model, runner, deliver } = deps;
 
   const mem = openMemFs({ dir: config.memoryDir, ftsPath: `${config.memoryDir}.fts.sqlite` });
   const transcript = createTranscript();
@@ -65,7 +63,6 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
 
   const orchestrator = createOrchestrator({
     runner,
-    hold,
     workspaceDir: config.workspaceDir,
     emitEvent: (e) =>
       queue.enqueue({ kind: "worker_event", workerId: e.workerId, status: e.status, summary: e.summary }),
@@ -139,7 +136,6 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
 
   const loop = createLoop({
     queue,
-    hold,
     ownerChatId,
     runTurn: (event, chatId) =>
       runManagerTurn(event, chatId, {

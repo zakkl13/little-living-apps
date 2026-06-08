@@ -13,8 +13,6 @@ export interface WorkerRecord {
   threadId?: string;
   /** Latest condensed result/output line(s). */
   latest?: string;
-  /** Whether this worker currently holds a Sprite keep-alive reference. */
-  holding: boolean;
   /** The AbortController for the current run; compared on settle to detect supersession. */
   currentAbort?: AbortController;
 }
@@ -51,7 +49,7 @@ export function createWorkerRegistry(): WorkerRegistry {
   const workers = new Map<string, WorkerRecord>();
   return {
     add({ id, purpose, project }) {
-      const rec: WorkerRecord = { id, purpose, project, status: "running", holding: false };
+      const rec: WorkerRecord = { id, purpose, project, status: "running" };
       workers.set(id, rec);
       return rec;
     },
@@ -79,7 +77,6 @@ export function createWorkerRegistry(): WorkerRegistry {
           // A worker that was "running" before the crash has no live run now → treat as idle and
           // reconcilable via subagent_poll (the codex thread persists server-side).
           status: rec.status === "running" ? "idle" : rec.status,
-          holding: false,
           ...(rec.threadId ? { threadId: rec.threadId } : {}),
           ...(rec.latest ? { latest: rec.latest } : {}),
         });

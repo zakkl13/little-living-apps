@@ -14,13 +14,11 @@ import { join } from "node:path";
 import type { CodexRunner } from "./runner.js";
 import { createWorkerRegistry, type WorkerRegistry } from "./registry.js";
 import type { Orchestrator, WorkerInfo } from "../manager/tools/orchestration.js";
-import type { SpriteHold } from "../runtime/hold.js";
 import { clipSummarizer, type Summarize } from "./summarize.js";
 import { logger } from "../logger.js";
 
 export interface OrchestratorDeps {
   runner: CodexRunner;
-  hold: SpriteHold;
   /** Default project dir (workspace) when a worker is started without an explicit project. */
   workspaceDir: string;
   /** Push a worker-completion event onto the manager queue. */
@@ -43,20 +41,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
   const inflight = new Set<Promise<void>>();
   let counter = 0;
 
-  function ensureHold(id: string): void {
-    const rec = registry.get(id);
-    if (rec && !rec.holding) {
-      rec.holding = true;
-      void deps.hold.acquire();
-    }
-  }
-  function dropHold(id: string): void {
-    const rec = registry.get(id);
-    if (rec && rec.holding) {
-      rec.holding = false;
-      void deps.hold.release();
-    }
-  }
   function mirror(): void {
     deps.onWorkersChanged?.(registry.infos());
   }
@@ -68,7 +52,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
     const abort = new AbortController();
     rec.currentAbort = abort;
     rec.status = "running";
-    ensureHold(id);
 
     const promise = deps.runner
       .run({
@@ -114,7 +97,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
     rec.latest = summary;
     rec.status = ok ? "idle" : "failed";
     rec.currentAbort = undefined;
-    dropHold(id);
     mirror();
     deps.emitEvent({ workerId: id, status: ok ? "completed" : "failed", summary });
   }
@@ -160,7 +142,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
       rec.currentAbort = undefined; // any pending settle for `old` is now superseded → silent
       rec.status = "canceled";
       old?.abort();
-      dropHold(id);
       mirror();
       return registry.info(id)!;
     },

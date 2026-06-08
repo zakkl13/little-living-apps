@@ -6,7 +6,6 @@ import { loadConfig, ConfigError } from "./config.js";
 import { createTelegramClient } from "./transport/telegram.js";
 import { startWebhookServer } from "./transport/webhook.js";
 import { createCodexRunner } from "./workers/runner.js";
-import { createSpriteHold } from "./runtime/hold.js";
 import { createAnthropicModel } from "./manager/anthropic.js";
 import { createManagerApp } from "./app.js";
 import { logger } from "./logger.js";
@@ -37,7 +36,6 @@ async function main(): Promise<void> {
     config,
     model,
     runner,
-    hold: createSpriteHold(),
     deliver: async (chatId, text) => {
       await telegram.sendMessage(chatId, text);
     },

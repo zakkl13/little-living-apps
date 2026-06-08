@@ -1,5 +1,5 @@
 // Headline end-to-end (DESIGN §13). The FULL runtime loop runs against fakes only: scripted
-// Anthropic, in-process Codex, fake Telegram, counting hold — over REAL memory (git + sqlite), the
+// Anthropic, in-process Codex, fake Telegram — over REAL memory (git + sqlite), the
 // real serialized queue/loop, and the real webhook. Nothing is deployed.
 //
 // Scenario: owner message → manager turn → subagent_start ×2 (parallel, prompt-scoped) → workers
@@ -75,9 +75,6 @@ describe("e2e: owner → manager → parallel workers → narrate", () => {
     const survived = lastReq.messages.flatMap((m) => m.content).find((b) => b.type === "compaction");
     assert.ok(survived, "compaction block survived across turns");
     assert.equal((survived as unknown as { id: string }).id, "cmp_E2E");
-
-    // No keep-alive hold leaked once everything went idle.
-    assert.equal(bot.hold.held, 0, "all holds released when idle");
   });
 });
 

@@ -1,6 +1,6 @@
 // Phase 3: the async worker orchestrator over the fake CodexRunner. Asserts the async lifecycle
-// (handle now, event later), steer = abort+resume, cancel, failure events, the over-long-output
-// clip bound, and the keep-alive hold lifecycle. Plus the runner-util tests carried over from v0.1.
+// (handle now, event later), steer = abort+resume, cancel, failure events, and the over-long-output
+// clip bound. Plus the runner-util tests carried over from v0.1.
 
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
@@ -10,7 +10,6 @@ import { formatItem, friendlyError } from "../src/workers/runner.js";
 import { createOrchestrator } from "../src/workers/orchestrator.js";
 import { clipSummarizer } from "../src/workers/summarize.js";
 import { makeFakeCodex } from "./fakes/fakeCodex.js";
-import { makeCountingHold } from "./helpers.js";
 
 interface EmittedEvent {
   workerId: string;
@@ -20,18 +19,16 @@ interface EmittedEvent {
 
 function harness(opts: { summarizeLimit?: number } = {}) {
   const runner = makeFakeCodex();
-  const hold = makeCountingHold();
   const events: EmittedEvent[] = [];
   const mirrored: number[] = [];
   const orch = createOrchestrator({
     runner,
-    hold,
     workspaceDir: "/workspace",
     emitEvent: (e) => events.push(e),
     summarize: clipSummarizer(opts.summarizeLimit ?? 2000),
     onWorkersChanged: (ws) => mirrored.push(ws.length),
   });
-  return { runner, hold, events, mirrored, orch };
+  return { runner, events, mirrored, orch };
 }
 
 describe("worker orchestrator (async lifecycle)", () => {
@@ -68,14 +65,13 @@ describe("worker orchestrator (async lifecycle)", () => {
   });
 
   it("cancel aborts without resuming and emits no event", async () => {
-    const { orch, events, hold } = harness();
+    const { orch, events } = harness();
     const info = orch.start("WAIT_FOR_ABORT — runaway worker");
     orch.cancel(info.id);
     await orch.whenQuiet();
 
     assert.equal(events.length, 0);
     assert.equal(orch.registry.get(info.id)!.status, "canceled");
-    assert.equal(hold.held, 0, "cancel releases the keep-alive hold");
   });
 
   it("a failed worker run emits a failed worker_event", async () => {
@@ -94,16 +90,6 @@ describe("worker orchestrator (async lifecycle)", () => {
     await orch.whenQuiet();
     assert.ok(events[0]!.summary.length < 200, "long output was condensed");
     assert.match(events[0]!.summary, /truncated/);
-  });
-
-  it("holds the Sprite awake while a worker runs and releases it on completion", async () => {
-    const { orch, hold } = harness();
-    orch.start("quick task");
-    assert.equal(hold.held, 1, "held while the worker is in flight");
-    await orch.whenQuiet();
-    assert.equal(hold.held, 0, "released when the worker settles");
-    assert.equal(hold.acquired, 1);
-    assert.equal(hold.released, 1);
   });
 
   it("send resumes an idle worker for a follow-up", async () => {

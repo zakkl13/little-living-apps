@@ -7,7 +7,6 @@ import { describe, it, afterEach } from "node:test";
 
 import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { openSnapshotStore, type ManagerSnapshot } from "../src/runtime/snapshot.js";
-import { noopHold } from "../src/runtime/hold.js";
 import { makeFakeCodex } from "./fakes/fakeCodex.js";
 import { makeFakeAnthropic, resp, text, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
 import { buildConfig, ALLOWED_USER_ID } from "./helpers.js";
@@ -24,7 +23,6 @@ function buildApp(config: Config, fake: FakeAnthropic): { app: ManagerApp; sent:
     config,
     model: fake,
     runner: makeFakeCodex(),
-    hold: noopHold,
     deliver: async (_chatId, t) => {
       sent.push({ text: t });
     },

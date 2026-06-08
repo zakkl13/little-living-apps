@@ -1,13 +1,8 @@
 // The serialized manager loop (DESIGN §3). One consumer drains the queue, running exactly one
 // manager turn at a time — the core invariant that keeps memory + transcript coherent without
 // locks. Workers run OUTSIDE the turn and re-enter as events.
-//
-// Keep-alive (DESIGN §3): the loop holds the Sprite awake while it is draining (a turn is running
-// or the queue is non-empty). Workers add their own refcounted hold while in flight (Phase 3), so
-// the Sprite only hibernates when fully idle.
 
 import type { EventQueue, ManagerEvent } from "./eventQueue.js";
-import type { SpriteHold } from "./hold.js";
 import { logger } from "../logger.js";
 
 export interface ManagerLoop {
@@ -19,7 +14,6 @@ export interface ManagerLoop {
 
 export interface LoopDeps {
   queue: EventQueue;
-  hold: SpriteHold;
   /** Default owner chat for worker_event / tick turns (owner_message carries its own chatId). */
   ownerChatId: number;
   runTurn: (event: ManagerEvent, chatId: number) => Promise<void>;
@@ -44,7 +38,6 @@ export function createLoop(deps: LoopDeps): ManagerLoop {
   async function drain(): Promise<void> {
     if (draining || stopped) return;
     draining = true;
-    await deps.hold.acquire();
     try {
       while (!stopped && !deps.queue.isEmpty()) {
         const event = deps.queue.dequeue()!;
@@ -56,7 +49,6 @@ export function createLoop(deps: LoopDeps): ManagerLoop {
         await deps.onTurnComplete?.();
       }
     } finally {
-      await deps.hold.release();
       draining = false;
     }
     // Something may have been enqueued during the final release window.

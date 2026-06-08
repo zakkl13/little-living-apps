@@ -16,7 +16,6 @@ import { createTranscript, runManagerTurn } from "../src/manager/manager.js";
 import { buildSystemPrompt } from "../src/manager/prompt.js";
 import { createEventQueue } from "../src/runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "../src/runtime/loop.js";
-import { noopHold } from "../src/runtime/hold.js";
 import { makeFakeAnthropic, resp, text, toolUse, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
 
 const OWNER = 11111111;
@@ -54,7 +53,6 @@ function makeHarness(): Harness {
 
   const loop = createLoop({
     queue,
-    hold: noopHold,
     ownerChatId: OWNER,
     runTurn: (event, chatId) =>
       runManagerTurn(event, chatId, {
