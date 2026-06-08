@@ -212,6 +212,38 @@ describe("compaction round-trip (DESIGN §4)", () => {
   });
 });
 
+describe("sprite facts in system prompt", () => {
+  function freshMem(): MemFs {
+    const mem = openMemFs({ dir: mkdtempSync(join(tmpdir(), "mgr-sprite-")) });
+    cleanups.push(() => mem.close());
+    return mem;
+  }
+
+  it("injects the runtime URL, port, and workspace dir", () => {
+    const prompt = buildSystemPrompt({
+      mem: freshMem(),
+      sprite: { publicUrl: "https://codex-bot-buaqy.sprites.app", port: 8080, workspaceDir: "/workspace/project" },
+    });
+    assert.match(prompt, /## Your Sprite/);
+    assert.match(prompt, /https:\/\/codex-bot-buaqy\.sprites\.app/);
+    assert.match(prompt, /Routed HTTP port: 8080/);
+    assert.match(prompt, /\/workspace\/project/);
+  });
+
+  it("shows a fallback when no public URL is assigned yet", () => {
+    const prompt = buildSystemPrompt({
+      mem: freshMem(),
+      sprite: { publicUrl: "", port: 8080, workspaceDir: "/workspace/project" },
+    });
+    assert.match(prompt, /unassigned.*PUBLIC_URL/);
+  });
+
+  it("omits the section entirely when no facts are provided", () => {
+    const prompt = buildSystemPrompt({ mem: freshMem() });
+    assert.doesNotMatch(prompt, /## Your Sprite/);
+  });
+});
+
 describe("serialized loop", () => {
   it("drains owner messages in order, one turn at a time", async () => {
     const h = makeHarness();

@@ -24,6 +24,15 @@ Format: `[ID] (phase) severity — symptom → suspected fix location`. Status: 
   before setWebhook. Not handled anywhere. → `provision/provision.sh`.
 - **[D7] (1) LOW — OPEN.** README/.env example show URL like `https://my-sprite.fly.dev`;
   real host is `https://<name>-<rand>.sprites.app`. → `README.md`, `.env.example`.
+- **[D16] (1) constraint — OPEN.** A Sprite has exactly ONE public URL, and it routes only to
+  **port 8080** (docs: "routes to port 8080 by default, or first HTTP port opened"). There is no
+  per-port/per-service public hostname: `sprite url` exposes no port-selection flag (only the
+  `sprite`/`public` auth modes), and a service's `http_port` field only governs the internal proxy.
+  Fly confirmed multi-port public routing is deliberately NOT on the roadmap ("we're nudging people
+  towards that proxy API or else setting up a reverse proxy fly app to multiplex"). State, not a bug:
+  the bot already occupies 8080, so a second publicly-reachable web app cannot get its own port/URL
+  on this Sprite. Sources: community.fly.io/t/.../26908, docs.sprites.dev/working-with-sprites,
+  docs.sprites.dev/cli/commands.
 
 ## Phase 3 — Codex auth + execution
 

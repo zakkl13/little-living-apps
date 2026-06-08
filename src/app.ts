@@ -149,8 +149,13 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
         transcript,
         deliver,
         buildSystem: () => {
+          const sprite = {
+            publicUrl: config.publicUrl,
+            port: config.port,
+            workspaceDir: config.workspaceDir,
+          };
           const line = workersLine();
-          return buildSystemPrompt(line ? { mem, workersLine: line } : { mem });
+          return buildSystemPrompt(line ? { mem, sprite, workersLine: line } : { mem, sprite });
         },
       }),
     onTurnComplete: persist,
