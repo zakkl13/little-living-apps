@@ -99,7 +99,7 @@ Format: `[ID] (phase) severity — symptom → suspected fix location`. Status: 
 
 ## Phase 7 — follow-up (user-reported)
 
-- **[D13] (7) HIGH — OPEN (user-facing duplicate messages).** The manager turn has TWO delivery
+- **[D13] (7) HIGH — RESOLVED (commit ed50815, validated live).** The manager turn had TWO delivery
   paths to Telegram and both fire: (1) the `notify_user` tool (intended channel), and (2) the
   end-turn text fallback in `runManagerTurn` (`manager.ts:79-82`) which delivers any final text
   block via `deliver()`. Opus 4.8 narrates a closing summary after tool use by default, so the
@@ -109,6 +109,9 @@ Format: `[ID] (phase) severity — symptom → suspected fix location`. Status: 
   fallback — track whether any `notify_user` ran during the turn and only deliver end-turn text if
   none did (and/or add a prompt line: notify_user is your only user channel; don't also write a
   closing summary). → `src/manager/manager.ts` (track notify in the tool loop), `src/manager/prompt.ts`.
+  **RESOLUTION:** went the other way — removed the `notify_user` tool entirely (Hermes/Letta-v1
+  style). The manager's plain `text` IS the reply; there is now a single delivery path, so duplicates
+  are structurally impossible. Validated on the Sprite: "Done — test2/test3 created…" arrived once.
 
 ## Phase 8 — Concurrency
 
@@ -133,6 +136,29 @@ Format: `[ID] (phase) severity — symptom → suspected fix location`. Status: 
   path proven.
 - **Phase 10 PASS:** manager memory git repo (commit-per-write objects) + `memory.fts.sqlite`
   persisted on the volume across the restart; transcript snapshot `manager.json` grew 24→50 msgs.
+
+## Phase 11 — notify_user removal (plain-text replies), live-validated
+
+- **Change (commit ed50815):** deleted the `notify_user` tool; the manager's plain `text` blocks
+  are delivered to Telegram directly, each iteration; `thinking`/`tool_use`/`compaction` never
+  delivered; `NO_REPLY` sentinel buys silence. Also resolves **D11** (summarizer is now a no-model
+  hard-clip `clipSummarizer`, so the Haiku+`compact_20260112` 400 can't happen; `utilityModel`
+  removed from config).
+- **[D14] (11) HIGH — FIXED (commit b49d431, validated).** NO_REPLY reasoning leak. The model
+  emitted private reasoning AND the sentinel in one text block ("…no need to message the user yet.
+  \n\nNO_REPLY"); the original exact-match suppression (`trimmed === "NO_REPLY"`) didn't match, so
+  the reasoning was delivered to the owner. Fix: `deliverableText` withholds the WHOLE message when a
+  `NO_REPLY` token appears on its own line in any text block; prompt hardened (write nothing
+  before/after it). Re-test: the manager replied with a bare `NO_REPLY` after spawning the worker →
+  nothing delivered → single clean "Done" on completion. → `src/manager/manager.ts`,
+  `src/manager/prompt.ts`. ROOT CAUSE (separate follow-up): `anthropic.ts` never sets the `thinking`
+  param (DESIGN §4), so the model has no private channel and reasons in text. Enable extended
+  thinking so reasoning lands in `thinking` blocks.
+- **[D15] (deploy) MED — OPEN (process gap).** Deploy syncs via `git archive HEAD | tar x` overlay,
+  which **adds/overwrites but never deletes**. After this change the orphaned `src/manager/tools/
+  notify.ts` lingered on the Sprite (compiled into `dist`, dead) until manually `rm`'d. Any deploy
+  that deletes a tracked file must prune on the box (e.g. clean the `src/` + `dist/` trees before
+  extract, or `git archive` into a fresh dir). → deploy recipe below / `provision/provision.sh`.
 
 ### Phase 1 working recipe (validated)
 - Auth: `sprite auth setup --token "$SPRITES_TOKEN"`
