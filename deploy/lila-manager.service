@@ -1,0 +1,23 @@
+# systemd unit for the little-living-apps manager. bootstrap.sh substitutes the __PLACEHOLDERS__
+# and installs this to /etc/systemd/system/lila-manager.service. Keeps the manager alive across
+# crashes and reboots; a cold restart is lossless (snapshot + persistent memory).
+#
+# The manager opens NO inbound port — it reaches Telegram by outbound long-poll — so there is
+# nothing here to expose. The disposable VM is the security boundary.
+[Unit]
+Description=little-living-apps manager (Telegram -> Claude manager + Codex workers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=/etc/lila/lila.env
+# mise exec resolves the pinned Ruby/Node (and the global codex bin) from .mise.toml in WorkingDirectory.
+ExecStart=__MISE__ exec -- npm start
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
