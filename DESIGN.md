@@ -100,10 +100,12 @@ append `tool_result`, call again. The manager's plain `text` blocks are delivere
 iteration (Hermes/Letta-v1 style: there is no `notify_user` tool — staying in-distribution with how
 the models emit assistant text). `thinking` blocks are private; the `NO_REPLY` sentinel buys silence.
 
-- **Models:** `MANAGER_MODEL` = `claude-opus-4-8`; `UTILITY_MODEL` = `claude-haiku-4-5` (condensing
-  over-long worker output, idle memory-hygiene summaries). Adaptive thinking (`thinking:{type:
-  "adaptive"}`) + `output_config.effort` (default `high`). Two cost tiers; manager leanness is the
-  cost-control lever.
+- **Models:** `MANAGER_MODEL` = `claude-opus-4-8` (the only model — there is no utility model; the
+  worker-output bound is a deterministic clip, not a model call). The manager request sets
+  `thinking:{type:"adaptive",display:"summarized"}` (the only on-mode for opus-4-8; auto-enables
+  interleaved thinking, no beta header) + `output_config:{effort:"high"}`. Thinking blocks are the
+  manager's private reasoning channel — never delivered (the loop delivers only `text`), round-tripped
+  verbatim. Manager leanness is the cost-control lever.
 - **"No hands" is the tool list.** The request includes only our tool groups (§9) + the `memory`
   tool. There is no bash/read/write/web tool on the raw Messages API unless we add one — so the
   capability boundary is airtight by construction (the Agent SDK couldn't guarantee this).

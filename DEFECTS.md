@@ -151,9 +151,13 @@ Format: `[ID] (phase) severity — symptom → suspected fix location`. Status: 
   `NO_REPLY` token appears on its own line in any text block; prompt hardened (write nothing
   before/after it). Re-test: the manager replied with a bare `NO_REPLY` after spawning the worker →
   nothing delivered → single clean "Done" on completion. → `src/manager/manager.ts`,
-  `src/manager/prompt.ts`. ROOT CAUSE (separate follow-up): `anthropic.ts` never sets the `thinking`
-  param (DESIGN §4), so the model has no private channel and reasons in text. Enable extended
-  thinking so reasoning lands in `thinking` blocks.
+  `src/manager/prompt.ts`. ROOT CAUSE — FIXED: `anthropic.ts` never set the `thinking` param
+  (DESIGN §4), so the model had no private channel and reasoned in text. Now sets
+  `thinking:{type:"adaptive",display:"summarized"}` + `output_config:{effort:"high"}` (the only
+  valid on-mode for opus-4-8; adaptive auto-enables interleaved thinking, no beta header). Reasoning
+  now lands in `thinking` blocks (never delivered — the loop reads only `text`); they round-trip
+  verbatim with response.content (signature preserved). `max_tokens` default raised 8192→16000 for
+  thinking headroom. The NO_REPLY suppression remains as defense-in-depth. → `src/manager/anthropic.ts`.
 - **[D15] (deploy) MED — OPEN (process gap).** Deploy syncs via `git archive HEAD | tar x` overlay,
   which **adds/overwrites but never deletes**. After this change the orphaned `src/manager/tools/
   notify.ts` lingered on the Sprite (compiled into `dist`, dead) until manually `rm`'d. Any deploy

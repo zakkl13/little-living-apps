@@ -104,6 +104,27 @@ describe("manager turn", () => {
     assert.equal(h.sent.length, 0, "reasoning leading up to NO_REPLY must never be delivered");
   });
 
+  it("never delivers thinking blocks — only the text alongside them", async () => {
+    const h = makeHarness();
+    const thinking = { type: "thinking", thinking: "the owner wants X; I'll do Y", signature: "sig_1" };
+    // Thinking + text + a tool call: the text ships, the tool runs, the turn continues to a 2nd
+    // request — which must carry the thinking block back verbatim (signature preserved).
+    h.fake.push(
+      resp([thinking, text("Done — Y is taken care of."), toolUse("memory", { command: "view", path: "/memories" })]),
+      resp([]),
+    );
+    await h.send("do the thing");
+    assert.deepEqual(
+      h.sent.map((m) => m.text),
+      ["Done — Y is taken care of."],
+      "thinking block stays private; only the text block reaches the owner",
+    );
+    const secondReq = h.fake.requests[1]!;
+    const tb = secondReq.messages.flatMap((m) => m.content).find((b) => b.type === "thinking");
+    assert.ok(tb, "thinking block round-tripped into the next request");
+    assert.equal((tb as unknown as { signature: string }).signature, "sig_1");
+  });
+
   it("delivers an acknowledgement alongside a tool call, then the result", async () => {
     const h = makeHarness();
     h.fake.push(

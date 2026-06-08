@@ -96,10 +96,22 @@ export function createAnthropicModel(opts: AnthropicModelOptions): ManagerModel 
     async createMessage(req: ManagerRequest): Promise<ManagerResponse> {
       const params = {
         model: req.model,
-        max_tokens: req.maxTokens ?? 8192,
+        // Adaptive thinking can spend output tokens on reasoning, so give headroom; 16k stays under
+        // the SDK's non-streaming HTTP-timeout guard while leaving room to think + reply + call tools.
+        max_tokens: req.maxTokens ?? 16000,
         system: req.system,
         messages: req.messages as unknown as Anthropic.Beta.BetaMessageParam[],
         tools: req.tools.map(toBetaTool),
+        // Adaptive thinking gives the manager a PRIVATE reasoning channel (thinking blocks), so it
+        // stops reasoning out loud in `text` — which the loop now delivers straight to the owner
+        // (DESIGN §4). `adaptive` is the only on-mode for opus-4-8; it auto-enables interleaved
+        // thinking between tool calls (no beta header). `display:"summarized"` populates the block
+        // text so reasoning is visible in snapshots for debugging — it is never delivered (the loop
+        // reads only `text` blocks). Thinking blocks round-trip verbatim with the rest of
+        // response.content, preserving their signature (the same append-verbatim contract as compaction).
+        thinking: { type: "adaptive", display: "summarized" },
+        // Effort lives inside output_config (not top-level). `high` is the agentic sweet spot.
+        output_config: { effort: "high" },
         // Server-side context management: compaction + stale tool-result pruning (DESIGN §4).
         context_management: {
           edits: [{ type: "compact_20260112" }, { type: "clear_tool_uses_20250919" }],
