@@ -20,8 +20,8 @@ export function ensureRepo(dir: string): void {
   if (existsSync(join(dir, ".git"))) return;
   git(dir, ["init", "-q"]);
   // Local identity so commits never depend on the host's global git config.
-  git(dir, ["config", "user.name", "sprite-codex-bot manager"]);
-  git(dir, ["config", "user.email", "manager@sprite.local"]);
+  git(dir, ["config", "user.name", "little-living-apps manager"]);
+  git(dir, ["config", "user.email", "manager@lila.local"]);
 }
 
 /**

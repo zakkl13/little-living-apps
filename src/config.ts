@@ -4,8 +4,8 @@
 // flips Codex from the ChatGPT subscription to metered API billing (SPEC §4 / §13.1).
 
 // Sandbox vocabulary is the Codex SDK's own (ThreadOptions.sandboxMode). "danger-full-access"
-// is full dangerous access with NO sandbox init (no Landlock/seccomp) — the Sprite is the
-// isolation boundary (SPEC §7) — and we pair it with approvalPolicy "never" in the runner.
+// is full dangerous access with NO sandbox init (no Landlock/seccomp) — the disposable VM is the
+// isolation boundary — and we pair it with approvalPolicy "never" in the runner.
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 
 const SANDBOX_MODES: readonly SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];

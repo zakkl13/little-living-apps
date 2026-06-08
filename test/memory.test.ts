@@ -162,10 +162,10 @@ describe("MemFs core-memory behaviors (DESIGN §5 additions)", () => {
     mem.create({
       command: "create",
       path: "/memories/archival/decisions/d1.md",
-      file_text: "---\ndescription: chose webhook over polling\n---\nbody\n",
+      file_text: "---\ndescription: chose SQLite over Postgres\n---\nbody\n",
     });
     const tree = mem.treeListing();
-    assert.match(tree, /archival\/decisions\/d1\.md — chose webhook over polling/);
+    assert.match(tree, /archival\/decisions\/d1\.md — chose SQLite over Postgres/);
     assert.doesNotMatch(tree, /system\/persona/);
   });
 

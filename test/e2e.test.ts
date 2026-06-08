@@ -1,6 +1,6 @@
 // Headline end-to-end (DESIGN §13). The FULL runtime loop runs against fakes only: scripted
 // Anthropic, in-process Codex, fake Telegram — over REAL memory (git + sqlite), the
-// real serialized queue/loop, and the real webhook. Nothing is deployed.
+// real serialized queue/loop, and the real long-poll loop. Nothing is deployed.
 //
 // Scenario: owner message → manager turn → subagent_start ×2 (parallel, prompt-scoped) → workers
 // complete → worker_events → manager narrates as plain text → Telegram. Asserts memory-tool writes land in

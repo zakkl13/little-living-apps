@@ -1,4 +1,4 @@
-// v0.2 test harness: boots the REAL manager app (real memory/git/sqlite, real loop, real webhook)
+// v0.2 test harness: boots the REAL manager app (real memory/git/sqlite, real loop, real poller)
 // wired to fakes at the three external boundaries — Anthropic (scripted model), Codex (in-process
 // runner), Telegram (fake HTTP server). Nothing is deployed.
 

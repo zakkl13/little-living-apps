@@ -1,9 +1,9 @@
 {
-  "name": "sprite-codex-bot",
+  "name": "little-living-apps",
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Telegram → Claude manager orchestrating headless OpenAI Codex workers on a Fly Sprite",
+  "description": "Telegram → Claude manager orchestrating headless OpenAI Codex workers on a host you control, building and maintaining one little living app",
   "engines": {
     "node": ">=22"
   },

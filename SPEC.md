@@ -1,5 +1,10 @@
 # Spec — Sprite-Hosted Codex Telegram Bot (v0.1)
 
+> **Historical.** This is the original v0.1 thin-proof spec, superseded by `DESIGN.md` (v0.2) and
+> then by the host-native migration (`MIGRATION.md`). The Fly Sprite substrate and webhook transport
+> it describes have been removed — the project now runs on a plain always-on Linux host and reaches
+> Telegram by outbound long-poll. Kept for provenance only.
+
 > **Goal of this iteration:** A single git repo that can (1) provision a Fly Sprite, (2) install OpenAI Codex CLI on it, (3) run a small server that lets a Telegram bot drive a Codex session **on my behalf** using my ChatGPT subscription.
 >
 > This is the thinnest possible proof of the "agent lives on a Sprite, I talk to it from my phone" loop. Multi-app orchestration, the owned PWA, sharing, and self-healing are explicitly **out of scope** here.

@@ -1,10 +1,19 @@
 # DESIGN.md — Agent-Manager over Codex Workers (v0.2)
 
+> **Substrate update (host-native migration, see `MIGRATION.md`).** This document predates the move
+> off the Fly Sprite. The manager loop, memory, worker orchestration, and durability described here
+> are unchanged and current. What changed: the bot now runs on a **plain always-on Linux VM** (not a
+> hibernating Sprite), reaches Telegram by **outbound long-poll** (not an inbound webhook), and the
+> **keep-alive hold is gone** (an always-on box never pauses). Wherever this doc says "Sprite,"
+> "hibernate/cold-wake," "webhook," or "keep-alive," read the host-native equivalent: the VM stays
+> up, a cold *restart* (crash/reboot, recovered by systemd) is the durability event, and the
+> transport is long-poll. The single app the team builds is a Rails 8 runtime (next milestone).
+
 > Companion to `SPEC.md`. `SPEC.md` describes the v0.1 "thin proof" (a Telegram bot that relays
 > directly to one Codex session). This document supersedes that model: the owner now talks to a
 > **Claude manager** that orchestrates many **Codex workers**. The lower half of v0.1 (Codex SDK
-> integration, Sprite keep-alive, Telegram transport) is reused; the relaying handler is replaced
-> by a manager runtime + memory + coordination layer.
+> integration, Telegram transport) is reused; the relaying handler is replaced by a manager runtime
+> + memory + coordination layer.
 
 ## 1. Goals & non-goals
 
@@ -20,8 +29,9 @@
   the code is not for human review; formal lease enforcement is deferred, see §7).
 - **Memory** is the manager's only durable state, **tool-mediated** via Anthropic's native
   **memory tool** (`memory_20250818`), with a backend modeled on Letta's MemFS: git-tracked
-  markdown files on the Sprite, zero external deps for storage.
-- Everything runs on a **hibernating Sprite** and survives cold wake.
+  markdown files on the host, zero external deps for storage.
+- Everything runs on an **always-on Linux VM** and survives a cold restart (crash/reboot) via
+  per-turn snapshots + git-backed memory; systemd brings the manager back.
 - **Minimal dependencies**: `@openai/codex-sdk` (workers) + `@anthropic-ai/sdk` (manager loop);
   otherwise Node 22 built-ins + `node:sqlite`. The hardest context-management pieces — compaction,
   memory, stale-result pruning — are **Anthropic Messages API betas**, not hand-rolled (see §4–§5).

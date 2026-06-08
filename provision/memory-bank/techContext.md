@@ -8,4 +8,4 @@
 - **Build:**
 - **Test:**
 - **Run / deploy:**
-- **Constraints (Sprite, perf, security):**
+- **Constraints (host, perf, security):**

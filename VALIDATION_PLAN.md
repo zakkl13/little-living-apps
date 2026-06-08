@@ -1,37 +1,37 @@
-# Live Sprite Validation Plan
+# Host-Native Bring-Up / Smoke Plan
 
-Bottom-up bring-up of the never-deployed v0.2 bot on a **real** Fly Sprite. One layer at a
-time; a green layer is a precondition for the next. Defects are logged in `DEFECTS.md` and
-reflected back into code/DESIGN.md/memory — not fixed inline mid-layer.
+Bottom-up validation of the bot on a **real** disposable Linux host (trial target: a small AWS EC2
+Ubuntu instance). One layer at a time; a green layer is a precondition for the next. Defects go in
+`DEFECTS.md`.
+
+> The original plan validated the Fly Sprite substrate (Sprite CLI, single-port routing, keep-alive
+> Tasks API, webhook). That substrate was removed — see `MIGRATION.md`. This plan replaces it.
 
 ## Rules
-- One variable at a time, bottom-up.
-- Capture, don't fix: log each defect (layer, symptom, expected vs actual, suspected file).
-  Batch-fix between layers, then re-run from the failed layer.
-- Cheapest falsifying probe first (raw `sprite exec` shell checks before booting the Service).
+- One variable at a time, bottom-up. Cheapest falsifying probe first.
+- Capture, don't fix: log each defect (layer, symptom, expected vs actual, suspected file). Batch-fix
+  between layers, then re-run from the failed layer.
 
 ## Phases
-1. **Provision the bare Sprite** — install+auth CLI; `create`, push repo, `exec`, public URL.
-   Validate the real CLI surface vs provision.sh's guessed shims.
-2. **Runtime deps on the box** — `npm ci && build`; Node ≥22; `node --experimental-sqlite`
-   actually loads `node:sqlite` on the Sprite's Node build.
-3. **Codex auth + execution** — `codex login --device-auth`; raw probe under `danger-full-access`
-   in the microVM (sandbox-free exec where Landlock/seccomp may not init).
-4. **Sprite keep-alive hold** — exercise hold.ts against the real Tasks-API socket
-   (`/.sprite/api.sock`): acquire / heartbeat / release; held Sprite keeps a long TCP stream.
-5. **Boot as a Service + webhook** — config guards fire; `setWebhook(PUBLIC_URL)`; secret-token
-   verification; inbound POST reaches the handler and wakes the box.
-6. **Anthropic LIVE** — model ids resolve; each beta in isolation (compaction round-trip,
-   memory tool CRUD → MemFS, context editing). Largest fakes-vs-reality gap.
-7. **End-to-end single turn** — Telegram msg → manager → one Codex worker → worker_event →
-   narrate → notify_user.
-8. **Concurrency** — two parallel scoped workers; steer (abort+resume); cancel; overlap serialize.
-9. **Durability / cold-wake** — hibernate mid-state; wake via webhook; restore() rehydrates
-   transcript + queue + workers; memory survives.
-10. **Memory persistence sweep** — commit-per-write + FTS survive a real wake cycle.
+1. **Bootstrap a bare host** — `sudo bash bootstrap.sh` on fresh Ubuntu 22.04+/Debian 12: billing
+   guard fires; apt deps install; mise brings up pinned Ruby+Node (`.mise.toml`); the Codex CLI
+   installs; `npm ci && npm run build` succeeds; data dirs + workspace git repo created; worker
+   `AGENTS.md`/`memory-bank` seeded; systemd unit installed + enabled.
+2. **Runtime deps** — `node --experimental-sqlite` loads `node:sqlite` on the host's Node;
+   `ruby --version` is the pinned Ruby under mise.
+3. **Codex auth** — `codex login --device-auth` on the ChatGPT subscription; `codex login status` OK;
+   `CODEX_HOME` persists on the VM disk. Raw probe under `danger-full-access`.
+4. **Service up (long-poll)** — `systemctl start lila-manager`; config guards pass; the manager
+   `deleteWebhook`s then long-polls `getUpdates`; **no inbound port is opened** (verify with `ss
+   -tlnp`). `journalctl -u lila-manager -f` is clean.
+5. **Anthropic LIVE** — model ids resolve; betas in isolation (compaction round-trip, memory tool
+   CRUD → MemFS, context editing). Largest fakes-vs-reality gap.
+6. **End-to-end single turn** — Telegram owner msg → manager turn → one Codex worker scaffolds a
+   trivial app under `$WORKSPACE_DIR` → `worker_event` → manager narrates → reply lands once.
+7. **Concurrency** — two parallel scoped workers; steer (abort+resume); cancel; overlap serializes.
+8. **Durability / cold restart** — `systemctl restart lila-manager` mid-state; `restore()` rehydrates
+   transcript + queue + workers; git memory + FTS survive.
 
-## Credentials status
-- `SPRITES_TOKEN` ✅ (Phases 1–4)
-- `CLAUDE_TOKEN` ⚠️ present but ≠ `ANTHROPIC_API_KEY` (config.ts requires an Anthropic API key)
-- MISSING for Phase 5+: `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `TELEGRAM_WEBHOOK_SECRET`,
-  `ANTHROPIC_API_KEY`
+## Credentials needed
+- `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`, `ANTHROPIC_API_KEY` (in `.env` → `/etc/lila/lila.env`).
+- Codex: interactive `codex login --device-auth` (ChatGPT subscription). **No** `OPENAI_API_KEY`.

@@ -76,7 +76,7 @@ export function friendlyError(detail: string): string {
   const clipped = detail.slice(0, 1500);
   const authish = /login|auth|401|unauthor|credential|expired/i.test(clipped);
   return authish
-    ? `⚠️ Codex couldn't run — looks like an auth problem. Re-run \`codex login\` on the Sprite ` +
+    ? `⚠️ Codex couldn't run — looks like an auth problem. Re-run \`codex login\` on the host ` +
         `(against the persistent CODEX_HOME).\n\n${clipped}`
     : `⚠️ Codex error.\n\n${clipped}`;
 }
