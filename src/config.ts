@@ -13,12 +13,10 @@ const SANDBOX_MODES: readonly SandboxMode[] = ["read-only", "workspace-write", "
 export interface Config {
   telegramBotToken: string;
   allowedUserIds: number[];
-  webhookSecret: string;
-  webhookPath: string;
-  port: number;
-  /** Public HTTPS base URL of the Sprite, used to register the webhook. Empty = manual. */
-  publicUrl: string;
-  /** Holds project repos that workers operate on (DESIGN §10). */
+  /** Where the app the agent builds is served (env APP_PUBLIC_URL), surfaced to the manager
+   *  prompt. Empty = not yet published (the app is private until you choose to expose it). */
+  appPublicUrl: string;
+  /** Holds the app the agent builds and maintains (DESIGN §10). */
   workspaceDir: string;
   sandboxMode: SandboxMode;
   /** Telegram Bot API base URL; overridden in tests. */
@@ -80,7 +78,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const telegramBotToken = required(env, "TELEGRAM_BOT_TOKEN");
   const allowedUserIds = parseUserIds(required(env, "ALLOWED_USER_IDS"));
-  const webhookSecret = required(env, "TELEGRAM_WEBHOOK_SECRET");
   const anthropicApiKey = required(env, "ANTHROPIC_API_KEY");
 
   const sandboxRaw = (env.CODEX_SANDBOX_MODE ?? "danger-full-access").trim() as SandboxMode;
@@ -90,24 +87,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
-  const webhookPath = normalizePath(env.WEBHOOK_PATH?.trim() || `/tg/${webhookSecret}`);
-
-  const portRaw = env.PORT?.trim() || "8080";
-  const port = Number(portRaw);
-  if (!Number.isInteger(port) || port < 0 || port > 65535) {
-    throw new ConfigError(`PORT must be a valid port number (got "${portRaw}")`);
-  }
-
   const codexPathOverride = env.CODEX_BIN?.trim() || undefined;
 
   return {
     telegramBotToken,
     allowedUserIds,
-    webhookSecret,
-    webhookPath,
-    port,
-    publicUrl: (env.PUBLIC_URL?.trim() ?? "").replace(/\/+$/, ""),
-    workspaceDir: env.WORKSPACE_DIR?.trim() || "/workspace/project",
+    appPublicUrl: (env.APP_PUBLIC_URL?.trim() ?? "").replace(/\/+$/, ""),
+    workspaceDir: env.WORKSPACE_DIR?.trim() || "/srv/app",
     sandboxMode: sandboxRaw,
     telegramApiBaseUrl: (env.TELEGRAM_API_BASE_URL?.trim() || "https://api.telegram.org").replace(
       /\/+$/,
@@ -116,13 +102,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ...(codexPathOverride ? { codexPathOverride } : {}),
 
     anthropicApiKey,
-    memoryDir: env.MEMORY_DIR?.trim() || "/workspace/.manager/memory",
-    managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/workspace/.manager/state",
+    memoryDir: env.MEMORY_DIR?.trim() || "/var/lib/lila/memory",
+    managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/var/lib/lila/state",
     managerModel: env.MANAGER_MODEL?.trim() || "claude-opus-4-8",
     ...(env.ANTHROPIC_BASE_URL?.trim() ? { anthropicBaseUrl: env.ANTHROPIC_BASE_URL.trim() } : {}),
   };
-}
-
-function normalizePath(p: string): string {
-  return p.startsWith("/") ? p : `/${p}`;
 }

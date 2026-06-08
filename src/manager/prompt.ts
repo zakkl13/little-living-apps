@@ -50,48 +50,43 @@ Memory is the only state that survives a restart. Keep durable facts, decisions,
 there — write them down.`;
 
 /**
- * Live facts about the Sprite this manager runs on. Sourced from runtime config (env) every turn,
- * never hardcoded — so the URL/port/paths in the prompt always match the actual deployment.
+ * Live facts about the host this manager runs on. Sourced from runtime config (env) every turn,
+ * never hardcoded — so the paths/URL in the prompt always match the actual deployment.
  */
-export interface SpriteFacts {
-  /** Public HTTPS base URL of this Sprite (config.publicUrl). Empty until one is assigned. */
-  publicUrl: string;
-  /** Routed HTTP port a Service must listen on to be reachable at the public URL. */
-  port: number;
-  /** Shared workspace where project repos live (config.workspaceDir). */
+export interface RuntimeFacts {
+  /** Where the app the team builds is served (config.appPublicUrl). Empty until published. */
+  appPublicUrl: string;
+  /** Directory holding the single app the team builds and maintains (config.workspaceDir). */
   workspaceDir: string;
 }
 
-function renderSprite(s: SpriteFacts): string {
-  const url = s.publicUrl || "(unassigned — workers can read $PUBLIC_URL on the box)";
-  return `## Your Sprite (runtime environment)
-You and your team run inside a Fly Sprite — a persistent Linux microVM (x86_64).
+function renderRuntime(r: RuntimeFacts): string {
+  const url =
+    r.appPublicUrl || "(not published yet — the app is private until you choose to expose it)";
+  return `## Your runtime environment
+You and your team run on a Linux VM you fully control — a disposable host that IS the security
+boundary. Your workers run directly on the box (shell, files, packages, long-running services) and
+operate it on your instruction; you have no hands of your own.
+- The app: a single app the team builds and maintains, living at ${r.workspaceDir}.
 - Public URL: ${url}
-- Routed HTTP port: ${s.port}. A Service listening on this port is what the public URL reaches.
-- Shared workspace: ${s.workspaceDir} — project repos live here.
-- Persistence: a 100 GB disk survives hibernation; RAM does not. The box hibernates after ~30s idle
-  and wakes on any HTTP request to the URL, so anything that must run continuously is a Service.
-- URL auth defaults to private; set it public only when an endpoint must be reachable from outside.
-
-You have no hands yourself, but your workers run on the box and can operate it on your instruction:
-- Services (long-running, auto-restart on wake): \`/.sprite/bin/sprite-env services create <name> --cmd <bin> --args <csv> --env <K=v,...> --dir <path> --http-port <port>\`
-- URL auth: \`sprite url update --auth public|sprite\` (view current state with \`sprite info\`)
-- Keep-alive Tasks API (hold the box awake through a long job): unix socket \`/.sprite/api.sock\` — \`PUT|GET|DELETE /v1/tasks/<name>\` (max lifetime 1h)`;
+- The box is always on. There is no hibernation and no inbound port for the bot — you reach the
+  user over Telegram by outbound long-poll, so nothing about the box needs to be publicly reachable
+  unless YOU choose to publish the app.`;
 }
 
 export interface SystemPromptInput {
   mem: MemFs;
-  /** Live Sprite facts injected from runtime config; omitted in unit tests that don't need them. */
-  sprite?: SpriteFacts;
+  /** Live host facts injected from runtime config; omitted in unit tests that don't need them. */
+  runtime?: RuntimeFacts;
   /** Active workers summary line(s), if any (mirrors the registry). */
   workersLine?: string;
 }
 
-export function buildSystemPrompt({ mem, sprite, workersLine }: SystemPromptInput): string {
+export function buildSystemPrompt({ mem, runtime, workersLine }: SystemPromptInput): string {
   const core = mem.loadSystem();
   const index = mem.treeListing();
   const sections = [MANAGER_PERSONA, HOW_YOU_WORK];
-  if (sprite) sections.push(renderSprite(sprite));
+  if (runtime) sections.push(renderRuntime(runtime));
   sections.push(
     "## Core memory (system/, always loaded)\n" + (core || "(empty)"),
     "## Memory index (archival/ + recall/, pull with the memory tool's view)\n" + index,

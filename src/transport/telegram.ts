@@ -8,12 +8,37 @@ import { logger } from "../logger.js";
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
+export interface TelegramMessage {
+  message_id: number;
+  text?: string;
+  chat: { id: number };
+  from?: { id: number; username?: string; first_name?: string };
+}
+
+export interface TelegramUpdate {
+  update_id?: number;
+  message?: TelegramMessage;
+  edited_message?: TelegramMessage;
+}
+
+export interface GetUpdatesOptions {
+  /** Return updates with update_id >= offset; pass last_update_id + 1 to confirm prior ones. */
+  offset?: number;
+  /** Long-poll timeout in SECONDS (Telegram holds the request open this long when idle). */
+  timeout?: number;
+  /** Aborts the in-flight long-poll so shutdown is immediate. */
+  signal?: AbortSignal;
+}
+
 export interface TelegramClient {
   /** Sends text (chunked >4096). Returns the message id of the FIRST chunk, if any. */
   sendMessage(chatId: number, text: string): Promise<number | undefined>;
   /** Edits an existing message in place (used for the live "working…" status). */
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
-  setWebhook(url: string, secretToken: string): Promise<void>;
+  /** Remove any registered webhook so getUpdates is allowed (they are mutually exclusive). */
+  deleteWebhook(): Promise<void>;
+  /** Long-poll for new updates (outbound only — no inbound port needed). */
+  getUpdates(opts?: GetUpdatesOptions): Promise<TelegramUpdate[]>;
   getMe(): Promise<{ id: number; username?: string }>;
 }
 
@@ -44,11 +69,12 @@ export function chunkText(text: string, max = TELEGRAM_MAX_MESSAGE_LENGTH): stri
 export function createTelegramClient(opts: TelegramClientOptions): TelegramClient {
   const apiBase = `${opts.baseUrl}/bot${opts.token}`;
 
-  async function call<T>(method: string, body: unknown): Promise<T> {
+  async function call<T>(method: string, body: unknown, signal?: AbortSignal): Promise<T> {
     const res = await fetch(`${apiBase}/${method}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
@@ -89,13 +115,24 @@ export function createTelegramClient(opts: TelegramClientOptions): TelegramClien
       });
     },
 
-    async setWebhook(url: string, secretToken: string): Promise<void> {
-      await call("setWebhook", {
-        url,
-        secret_token: secretToken,
-        allowed_updates: ["message"],
-      });
-      logger.info("Registered Telegram webhook", { url });
+    async deleteWebhook(): Promise<void> {
+      // Telegram refuses getUpdates while a webhook is set; clear a stale one on startup.
+      // drop_pending_updates stays false so queued messages survive the switch.
+      await call("deleteWebhook", { drop_pending_updates: false });
+      logger.info("Cleared any registered Telegram webhook (long-poll mode)");
+    },
+
+    async getUpdates(opts: GetUpdatesOptions = {}): Promise<TelegramUpdate[]> {
+      const timeout = opts.timeout ?? 50;
+      return call<TelegramUpdate[]>(
+        "getUpdates",
+        {
+          ...(opts.offset !== undefined ? { offset: opts.offset } : {}),
+          timeout,
+          allowed_updates: ["message"],
+        },
+        opts.signal,
+      );
     },
 
     async getMe(): Promise<{ id: number; username?: string }> {

@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { loadConfig, type Config } from "../src/config.js";
-import { createTelegramClient } from "../src/transport/telegram.js";
-import { startWebhookServer, type RunningServer, type TelegramUpdate } from "../src/transport/webhook.js";
+import { createTelegramClient, type TelegramUpdate } from "../src/transport/telegram.js";
+import { startPoller, type Poller } from "../src/transport/poller.js";
 import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { clipSummarizer } from "../src/workers/summarize.js";
 
@@ -25,12 +25,10 @@ export function buildConfig(overrides: Record<string, string> = {}): Config {
   const env: NodeJS.ProcessEnv = {
     TELEGRAM_BOT_TOKEN: "test-token",
     ALLOWED_USER_IDS: String(ALLOWED_USER_ID),
-    TELEGRAM_WEBHOOK_SECRET: "secret-xyz",
     ANTHROPIC_API_KEY: "sk-ant-test",
     WORKSPACE_DIR: workspace,
     MEMORY_DIR: join(dir, "memory"),
     MANAGER_STATE_DIR: join(dir, "state"),
-    PORT: "0",
     TELEGRAM_API_BASE_URL: "http://127.0.0.1:1", // overridden with the fake's URL below
     ...overrides,
   };
@@ -43,8 +41,8 @@ export interface TestBot {
   telegram: FakeTelegram;
   anthropic: FakeAnthropic;
   codex: FakeCodex;
-  url: string;
-  postUpdate(update: TelegramUpdate, opts?: { secret?: string }): Promise<Response>;
+  /** Inject an inbound update the poller will pull and ingest (the long-poll seam). */
+  sendUpdate(update: TelegramUpdate): void;
   close(): Promise<void>;
 }
 
@@ -76,13 +74,11 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
   app.restore();
   app.start();
 
-  const server: RunningServer = await startWebhookServer({
-    port: config.port,
-    path: config.webhookPath,
-    secret: config.webhookSecret,
+  const poller: Poller = startPoller({
+    getUpdates: (opts) => client.getUpdates(opts),
     onUpdate: (update) => app.ingestTelegramUpdate(update),
+    timeoutSeconds: 1, // short so idle polls turn over quickly; pushUpdate wakes them instantly
   });
-  const url = `http://127.0.0.1:${server.port}${config.webhookPath}`;
 
   return {
     config,
@@ -90,18 +86,9 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
     telegram,
     anthropic,
     codex,
-    url,
-    postUpdate: (update, o) =>
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-telegram-bot-api-secret-token": o?.secret ?? config.webhookSecret,
-        },
-        body: JSON.stringify(update),
-      }),
+    sendUpdate: (update) => telegram.pushUpdate(update),
     close: async () => {
-      await server.close();
+      await poller.stop();
       await app.close();
       await telegram.close();
     },

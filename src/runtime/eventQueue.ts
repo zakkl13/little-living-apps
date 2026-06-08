@@ -1,5 +1,5 @@
 // The single durable queue that feeds the serialized manager loop (DESIGN §3). Two producers —
-// owner messages (from the webhook) and worker-completion events (from the orchestrator). One
+// owner messages (from the poller) and worker-completion events (from the orchestrator). One
 // consumer drains it, one turn at a time. Serializing turns is the core invariant that keeps
 // memory + transcript coherent without locks.
 //

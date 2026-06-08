@@ -17,7 +17,7 @@ import { createTranscript, runManagerTurn, type DeliverFn, type Transcript } fro
 import { createEventQueue, type EventQueue } from "./runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "./runtime/loop.js";
 import { openSnapshotStore } from "./runtime/snapshot.js";
-import type { TelegramUpdate } from "./transport/webhook.js";
+import type { TelegramUpdate } from "./transport/telegram.js";
 
 import type { CodexRunner } from "./workers/runner.js";
 import { createOrchestrator, type WorkerOrchestrator } from "./workers/orchestrator.js";
@@ -40,9 +40,9 @@ export interface ManagerApp {
   mem: MemFs;
   orchestrator: WorkerOrchestrator;
   transcript: Transcript;
-  /** Enqueue an owner message (the webhook calls this after authorizing). */
+  /** Enqueue an owner message (the poller calls this after authorizing). */
   enqueueOwner(chatId: number, text: string): void;
-  /** Authorize + handle commands + enqueue, from a raw Telegram update (the webhook sink). */
+  /** Authorize + handle commands + enqueue, from a raw Telegram update (the poller sink). */
   ingestTelegramUpdate(update: TelegramUpdate): void;
   /** Persist transcript + queue + workers (run after each turn). */
   persist(): void;
@@ -145,13 +145,12 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
         transcript,
         deliver,
         buildSystem: () => {
-          const sprite = {
-            publicUrl: config.publicUrl,
-            port: config.port,
+          const runtime = {
+            appPublicUrl: config.appPublicUrl,
             workspaceDir: config.workspaceDir,
           };
           const line = workersLine();
-          return buildSystemPrompt(line ? { mem, sprite, workersLine: line } : { mem, sprite });
+          return buildSystemPrompt(line ? { mem, runtime, workersLine: line } : { mem, runtime });
         },
       }),
     onTurnComplete: persist,

@@ -210,35 +210,34 @@ describe("compaction round-trip (DESIGN §4)", () => {
   });
 });
 
-describe("sprite facts in system prompt", () => {
+describe("host facts in system prompt", () => {
   function freshMem(): MemFs {
-    const mem = openMemFs({ dir: mkdtempSync(join(tmpdir(), "mgr-sprite-")) });
+    const mem = openMemFs({ dir: mkdtempSync(join(tmpdir(), "mgr-host-")) });
     cleanups.push(() => mem.close());
     return mem;
   }
 
-  it("injects the runtime URL, port, and workspace dir", () => {
+  it("injects the app URL and workspace dir", () => {
     const prompt = buildSystemPrompt({
       mem: freshMem(),
-      sprite: { publicUrl: "https://codex-bot-buaqy.sprites.app", port: 8080, workspaceDir: "/workspace/project" },
+      runtime: { appPublicUrl: "https://app.example.com", workspaceDir: "/srv/app" },
     });
-    assert.match(prompt, /## Your Sprite/);
-    assert.match(prompt, /https:\/\/codex-bot-buaqy\.sprites\.app/);
-    assert.match(prompt, /Routed HTTP port: 8080/);
-    assert.match(prompt, /\/workspace\/project/);
+    assert.match(prompt, /## Your runtime environment/);
+    assert.match(prompt, /https:\/\/app\.example\.com/);
+    assert.match(prompt, /\/srv\/app/);
   });
 
-  it("shows a fallback when no public URL is assigned yet", () => {
+  it("shows a fallback when the app is not published yet", () => {
     const prompt = buildSystemPrompt({
       mem: freshMem(),
-      sprite: { publicUrl: "", port: 8080, workspaceDir: "/workspace/project" },
+      runtime: { appPublicUrl: "", workspaceDir: "/srv/app" },
     });
-    assert.match(prompt, /unassigned.*PUBLIC_URL/);
+    assert.match(prompt, /not published yet/);
   });
 
   it("omits the section entirely when no facts are provided", () => {
     const prompt = buildSystemPrompt({ mem: freshMem() });
-    assert.doesNotMatch(prompt, /## Your Sprite/);
+    assert.doesNotMatch(prompt, /## Your runtime environment/);
   });
 });
 

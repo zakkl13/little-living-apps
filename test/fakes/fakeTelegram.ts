@@ -1,7 +1,11 @@
-// In-process fake of the Telegram Bot API. Records every call the bot makes so tests can
-// assert on what the user would have received — no real Telegram involved.
+// In-process fake of the Telegram Bot API. Records outbound calls (sendMessage/editMessageText) so
+// tests can assert what the user would have received, and serves getUpdates as a real long-poll:
+// tests inject inbound updates via pushUpdate() and the bot's poller pulls them out of band. No
+// real Telegram involved.
 
-import { createServer, type Server } from "node:http";
+import { createServer, type Server, type ServerResponse } from "node:http";
+
+import type { TelegramUpdate } from "../../src/transport/telegram.js";
 
 export interface SentMessage {
   chatId: number;
@@ -20,18 +24,37 @@ export interface FakeTelegram {
   port: number;
   sent: SentMessage[];
   edits: EditedMessage[];
-  setWebhookCalls: Array<{ url: string; secret?: string }>;
+  /** Inject an inbound update the bot's poller will fetch via getUpdates. */
+  pushUpdate(update: TelegramUpdate): void;
   /** Resolves once `predicate` is true or rejects after `timeoutMs`. */
   waitFor(predicate: () => boolean, timeoutMs?: number): Promise<void>;
   reset(): void;
   close(): Promise<void>;
 }
 
+interface Waiter {
+  respond: () => void;
+  timer: NodeJS.Timeout;
+}
+
 export async function startFakeTelegram(token = "test-token"): Promise<FakeTelegram> {
   const sent: SentMessage[] = [];
   const edits: EditedMessage[] = [];
-  const setWebhookCalls: Array<{ url: string; secret?: string }> = [];
+  let inbound: TelegramUpdate[] = []; // unconfirmed updates awaiting getUpdates
+  let waiters: Waiter[] = []; // long-poll requests parked until a push or timeout
   let messageSeq = 0;
+
+  const visibleFrom = (offset?: number): TelegramUpdate[] =>
+    inbound.filter((u) => offset === undefined || (u.update_id ?? 0) >= offset);
+
+  function wakeWaiters(): void {
+    const woken = waiters;
+    waiters = [];
+    for (const w of woken) {
+      clearTimeout(w.timer);
+      w.respond();
+    }
+  }
 
   const server: Server = createServer((req, res) => {
     let body = "";
@@ -63,9 +86,28 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
         });
         return ok(res, { message_id: Number(payload.message_id), text: payload.text });
       }
-      if (method === "setWebhook") {
-        setWebhookCalls.push({ url: String(payload.url), secret: payload.secret_token as string });
+      if (method === "deleteWebhook") {
         return ok(res, true);
+      }
+      if (method === "getUpdates") {
+        const offset = payload.offset === undefined ? undefined : Number(payload.offset);
+        const timeoutSec = Number(payload.timeout ?? 0);
+        // The offset confirms (drops) everything below it — Telegram's ack mechanism.
+        if (offset !== undefined) inbound = inbound.filter((u) => (u.update_id ?? 0) >= offset);
+
+        if (visibleFrom(offset).length > 0) return ok(res, visibleFrom(offset));
+
+        // Park the request: respond when an update is pushed, or after the (capped) long-poll.
+        const respond = (): void => {
+          if (!res.writableEnded) ok(res, visibleFrom(offset));
+        };
+        const timer = setTimeout(() => {
+          waiters = waiters.filter((w) => w.timer !== timer);
+          respond();
+        }, Math.min(timeoutSec * 1000, 2000));
+        timer.unref();
+        waiters.push({ respond, timer });
+        return;
       }
       if (method === "getMe") {
         return ok(res, { id: 42, is_bot: true, username: "fake_bot" });
@@ -88,7 +130,10 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
     port,
     sent,
     edits,
-    setWebhookCalls,
+    pushUpdate(update) {
+      inbound.push(update);
+      wakeWaiters();
+    },
     async waitFor(predicate, timeoutMs = 4000) {
       const start = Date.now();
       while (!predicate()) {
@@ -101,13 +146,17 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
     reset() {
       sent.length = 0;
       edits.length = 0;
-      setWebhookCalls.length = 0;
+      inbound = [];
     },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) => {
+        wakeWaiters(); // release any parked long-poll so the server can close
+        server.close(() => resolve());
+      }),
   };
 }
 
-function ok(res: import("node:http").ServerResponse, result: unknown): void {
+function ok(res: ServerResponse, result: unknown): void {
   res.writeHead(200, { "content-type": "application/json" });
   res.end(JSON.stringify({ ok: true, result }));
 }

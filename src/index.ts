@@ -1,10 +1,10 @@
 // Entrypoint (DESIGN §2): load config, wire the real boundaries into the manager app, restore any
-// snapshot, start the loop, and serve the webhook. Designed to run as a Sprite Service so it
-// auto-restarts on wake; the snapshot + persistent memory make a cold wake lossless.
+// snapshot, start the loop, and long-poll Telegram for updates. Designed to run under systemd so it
+// auto-restarts on crash/reboot; the snapshot + persistent memory make a cold restart lossless.
 
 import { loadConfig, ConfigError } from "./config.js";
 import { createTelegramClient } from "./transport/telegram.js";
-import { startWebhookServer } from "./transport/webhook.js";
+import { startPoller } from "./transport/poller.js";
 import { createCodexRunner } from "./workers/runner.js";
 import { createAnthropicModel } from "./manager/anthropic.js";
 import { createManagerApp } from "./app.js";
@@ -47,40 +47,28 @@ async function main(): Promise<void> {
     detail: auth.detail.split("\n")[0],
   });
 
-  app.restore(); // cold-wake recovery: transcript + queue + workers
+  app.restore(); // cold-restart recovery: transcript + queue + workers
   app.start();
 
-  const server = await startWebhookServer({
-    port: config.port,
-    path: config.webhookPath,
-    secret: config.webhookSecret,
+  // Outbound-only transport: clear any stale webhook, then long-poll. No inbound port is opened.
+  await telegram.deleteWebhook().catch((err) =>
+    logger.warn("deleteWebhook failed (continuing)", { error: (err as Error).message }),
+  );
+  const poller = startPoller({
+    getUpdates: (opts) => telegram.getUpdates(opts),
     onUpdate: (update) => app.ingestTelegramUpdate(update),
   });
 
-  if (config.publicUrl) {
-    try {
-      await telegram.setWebhook(`${config.publicUrl}${config.webhookPath}`, config.webhookSecret);
-    } catch (err) {
-      logger.error("Failed to register webhook (continuing; register manually)", {
-        error: (err as Error).message,
-      });
-    }
-  } else {
-    logger.info("PUBLIC_URL not set; skipping setWebhook. Register the webhook manually.", {
-      path: config.webhookPath,
-    });
-  }
-
   const shutdown = async (sig: string): Promise<void> => {
     logger.info(`Received ${sig}, shutting down`);
-    await server.close().catch(() => undefined);
+    await poller.stop().catch(() => undefined);
     await app.close().catch(() => undefined);
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
-  logger.info("sprite-codex-bot (v0.2 manager) ready", {
+  logger.info("little-living-apps (v0.2 manager) ready", {
     sandbox: config.sandboxMode,
     workspace: config.workspaceDir,
     memory: config.memoryDir,

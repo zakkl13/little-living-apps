@@ -49,7 +49,7 @@ describe("e2e: owner → manager → parallel workers → narrate", () => {
       ],
     });
 
-    await bot.postUpdate(messageUpdate("build the API and its tests in parallel"));
+    bot.sendUpdate(messageUpdate("build the API and its tests in parallel"));
     // Wait for all three narrations (ack + two completions).
     await bot.telegram.waitFor(() => bot.telegram.sent.length >= 3);
     await bot.app.orchestrator.whenQuiet();
@@ -95,7 +95,7 @@ describe("e2e: cold-wake recovery", () => {
         resp([]),
       ],
     });
-    await bot1.postUpdate(messageUpdate("remember I prefer terse replies"));
+    bot1.sendUpdate(messageUpdate("remember I prefer terse replies"));
     await bot1.telegram.waitFor(() => bot1.telegram.sent.length >= 1);
     await new Promise((r) => setTimeout(r, 20));
     assert.ok(bot1.app.mem.readRelative("system/owner.md"), "memory written");
@@ -112,7 +112,7 @@ describe("e2e: cold-wake recovery", () => {
       script: [resp([text("still here — terse it is")])],
     });
 
-    await bot2.postUpdate(messageUpdate("you there?"));
+    bot2.sendUpdate(messageUpdate("you there?"));
     await bot2.telegram.waitFor(() => bot2.telegram.sent.length >= 1);
 
     assert.ok(bot2.telegram.sent.some((m) => /still here/.test(m.text)));
@@ -129,7 +129,7 @@ describe("e2e: cold-wake recovery", () => {
 describe("e2e: transport guards", () => {
   it("rejects a non-allowlisted user and never runs the model", async () => {
     const bot = await boot();
-    await bot.postUpdate(messageUpdate("hello", { fromId: 99999999 }));
+    bot.sendUpdate(messageUpdate("hello", { fromId: 99999999 }));
     await bot.telegram.waitFor(() => bot.telegram.sent.length >= 1);
     await new Promise((r) => setTimeout(r, 30));
     assert.match(bot.telegram.sent[0]!.text, /not authorized/i);
@@ -137,18 +137,9 @@ describe("e2e: transport guards", () => {
     assert.equal(bot.codex.calls.length, 0);
   });
 
-  it("rejects a webhook POST with a bad secret token (401, no processing)", async () => {
-    const bot = await boot();
-    const res = await bot.postUpdate(messageUpdate("hello"), { secret: "wrong" });
-    assert.equal(res.status, 401);
-    await new Promise((r) => setTimeout(r, 30));
-    assert.equal(bot.telegram.sent.length, 0);
-    assert.equal(bot.anthropic.requests.length, 0);
-  });
-
   it("answers /status without invoking the model", async () => {
     const bot = await boot();
-    await bot.postUpdate(messageUpdate("/status"));
+    bot.sendUpdate(messageUpdate("/status"));
     await bot.telegram.waitFor(() => bot.telegram.sent.length >= 1);
     assert.match(bot.telegram.sent[0]!.text, /Workers:/);
     assert.equal(bot.anthropic.requests.length, 0);

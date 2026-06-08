@@ -5,7 +5,6 @@ import { ConfigError, loadConfig } from "../src/config.js";
 const base: NodeJS.ProcessEnv = {
   TELEGRAM_BOT_TOKEN: "tok",
   ALLOWED_USER_IDS: "1,2,3",
-  TELEGRAM_WEBHOOK_SECRET: "s3cr3t",
   ANTHROPIC_API_KEY: "sk-ant-test",
 };
 
@@ -14,9 +13,8 @@ describe("loadConfig", () => {
     const c = loadConfig(base);
     assert.deepEqual(c.allowedUserIds, [1, 2, 3]);
     assert.equal(c.sandboxMode, "danger-full-access");
-    assert.equal(c.port, 8080);
-    assert.equal(c.workspaceDir, "/workspace/project");
-    assert.equal(c.webhookPath, "/tg/s3cr3t");
+    assert.equal(c.workspaceDir, "/srv/app");
+    assert.equal(c.appPublicUrl, "", "no app published by default");
     assert.equal(c.telegramApiBaseUrl, "https://api.telegram.org");
   });
 
@@ -48,8 +46,10 @@ describe("loadConfig", () => {
   });
 
   it("throws on missing required vars", () => {
-    assert.throws(() => loadConfig({ ALLOWED_USER_IDS: "1", TELEGRAM_WEBHOOK_SECRET: "x" }), ConfigError);
-    assert.throws(() => loadConfig({ TELEGRAM_BOT_TOKEN: "t", TELEGRAM_WEBHOOK_SECRET: "x" }), ConfigError);
+    // Missing TELEGRAM_BOT_TOKEN.
+    assert.throws(() => loadConfig({ ALLOWED_USER_IDS: "1", ANTHROPIC_API_KEY: "k" }), ConfigError);
+    // Missing ALLOWED_USER_IDS.
+    assert.throws(() => loadConfig({ TELEGRAM_BOT_TOKEN: "t", ANTHROPIC_API_KEY: "k" }), ConfigError);
   });
 
   it("rejects non-integer user ids and unknown sandbox modes", () => {
@@ -57,15 +57,13 @@ describe("loadConfig", () => {
     assert.throws(() => loadConfig({ ...base, CODEX_SANDBOX_MODE: "nonsense" }), ConfigError);
   });
 
-  it("honors an explicit webhook path and trims trailing slashes on URLs", () => {
+  it("trims trailing slashes on the app URL and the Telegram API base URL", () => {
     const c = loadConfig({
       ...base,
-      WEBHOOK_PATH: "hook",
-      PUBLIC_URL: "https://x.fly.dev/",
+      APP_PUBLIC_URL: "https://app.example.com/",
       TELEGRAM_API_BASE_URL: "https://api.telegram.org/",
     });
-    assert.equal(c.webhookPath, "/hook");
-    assert.equal(c.publicUrl, "https://x.fly.dev");
+    assert.equal(c.appPublicUrl, "https://app.example.com");
     assert.equal(c.telegramApiBaseUrl, "https://api.telegram.org");
   });
 });
