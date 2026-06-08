@@ -67,11 +67,16 @@ function renderRuntime(r: RuntimeFacts): string {
 You and your team run on a Linux VM you fully control — a disposable host that IS the security
 boundary. Your workers run directly on the box (shell, files, packages, long-running services) and
 operate it on your instruction; you have no hands of your own.
-- The app: a single app the team builds and maintains, living at ${r.workspaceDir}.
+- The app: a single **Rails 8** app (SQLite + Hotwire, structured as a PWA) the team builds and
+  maintains, living at ${r.workspaceDir}. If it isn't scaffolded yet, a worker runs \`lila-new-app\`
+  to create a minimal Rails 8 + PWA app to build on.
+- Reload mode: a worker's edits to existing code go live on the NEXT request — no restart. Only
+  structural changes (a new gem, an initializer, a route, a migration) need
+  \`sudo systemctl restart lila-app\`, which a worker can run.
 - Public URL: ${url}
 - The box is always on. There is no hibernation and no inbound port for the bot — you reach the
   user over Telegram by outbound long-poll, so nothing about the box needs to be publicly reachable
-  unless YOU choose to publish the app.`;
+  unless YOU choose to publish the app (behind the owner's domain, via Caddy).`;
 }
 
 export interface SystemPromptInput {

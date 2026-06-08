@@ -1,0 +1,17 @@
+# Caddy reverse proxy for the app, with automatic HTTPS (Let's Encrypt) for your domain.
+# The app the agent builds binds to 127.0.0.1:3000; Caddy fronts it on your domain and terminates
+# TLS. The bot itself needs none of this — it talks to Telegram outbound — so Caddy is only for
+# publishing the app.
+#
+# Usage:
+#   1. Point your domain's DNS A/AAAA record at this host.
+#   2. Install Caddy (https://caddyserver.com/docs/install), e.g. on Debian/Ubuntu via the apt repo.
+#   3. Set your domain and run it:
+#        sudo LILA_DOMAIN=app.example.com caddy run --config deploy/Caddyfile
+#      (or copy to /etc/caddy/Caddyfile and `sudo systemctl enable --now caddy`).
+#
+# Access control is the app's job: generate Rails' built-in auth (bin/rails generate authentication)
+# so only you + invited users get in. Caddy just publishes; it does not authenticate.
+{$LILA_DOMAIN:localhost} {
+	reverse_proxy 127.0.0.1:3000
+}

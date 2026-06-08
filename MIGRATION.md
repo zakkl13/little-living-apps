@@ -1,5 +1,10 @@
 # Migration: Sprite-Codex-Bot → "Little Living Apps" (host-native)
 
+> **Status: implemented.** Phases 1–6 are done and on `main` (Phase 6 = continuous: `typecheck`
+> clean, `npm test` green, `npm run build` loads). Phase 4 shipped as a deliberately thin Rails 8 +
+> PWA scaffold (`bin/new-app`), not a heavy template. The one cosmetic leftover is the on-disk
+> directory name (`sprite-codex-bot/`); the package + docs are renamed to `little-living-apps`.
+
 Moving off the Fly Sprite onto a plain always-on Linux VM (trial target: a small AWS EC2
 Ubuntu instance). No Docker, no hibernation, no webhook. The agent-manager + Codex-worker core
 is the keeper; everything Sprite-, webhook-, and keep-alive-specific is **deleted, not adapted**.
@@ -216,13 +221,15 @@ isolation boundary."
 
 ---
 
-## Open decisions to confirm before/while building
+## Open decisions — resolved
 
-1. **Runtime archetypes:** one blessed Rails skeleton, or a couple (e.g. "CRUD-with-UI" vs
-   "automation/no-UI cron" for the home-services idea)? Shapes `runtime/` most.
-2. **App process ownership:** does the worker install the app's systemd unit itself, or does
-   `bin/new-app` do it as part of scaffolding? (Leaning: scaffolding does it.)
-3. **Private access for "you + your wife":** Tailscale vs Caddy-with-basic-auth vs Rails auth only.
-   Affects whether Caddy shows up in the default path at all.
-4. **Project/dir rename** now or after the trial.
+1. **Runtime archetypes:** ONE minimal Rails 8 + PWA scaffold, "as little code as possible." Not a
+   CRUD skeleton, not a second no-UI archetype. The only opinion is Rails 8 with PWA in mind; the
+   agent builds on top. → `bin/new-app` leans on Rails 8 defaults + generators.
+2. **App process ownership:** the scaffolder installs + starts the app's systemd unit. →
+   `bin/new-app` installs `deploy/lila-app.service`.
+3. **Private access:** Rails' built-in auth; the host is exposed behind the owner's own domain, so
+   Caddy (auto-HTTPS) IS in the default path → `deploy/Caddyfile` + docs.
+4. **Project/dir rename:** package + docs renamed to `little-living-apps`; the on-disk directory
+   rename is deferred (cosmetic).
 ```

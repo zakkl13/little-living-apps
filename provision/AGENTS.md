@@ -31,6 +31,21 @@ outcomes.
 4. **Default to private.** The app is private until the owner chooses to publish it. Only expose a
    port/URL when the task explicitly requires it, and require auth on any public endpoint.
 
+## Runtime conventions (this app is a Rails 8 app)
+- The app is a **Rails 8** project (SQLite + the Solid Queue/Cache/Cable stack, Hotwire/Turbo for
+  live UI, structured as a **PWA**). Build with the grain of Rails 8 defaults — reach for built-ins
+  before adding gems, and keep things minimal.
+- **Reload mode:** the app runs in the development environment under systemd, so your edits to
+  existing code go live on the **next request** — no restart needed. Structural changes (a new gem,
+  an initializer, a route, a migration) DO need a restart: `sudo systemctl restart lila-app`. Run
+  migrations with `bin/rails db:migrate`.
+- **Auth:** use Rails' built-in authentication (`bin/rails generate authentication`) for access
+  control — don't hand-roll or add an auth gem.
+- **Reserved path:** `/_agent/*` is reserved for an optional in-app agent surface. Never route app
+  paths under it.
+- If the app isn't scaffolded yet, create it with `lila-new-app` (a minimal Rails 8 + PWA app);
+  don't `rails new` by hand.
+
 ## Memory Bank (read at the START of every objective)
 This repo has a `memory-bank/` directory — your durable, per-codebase memory (the analog of the
 manager's memory). At the start of **every** objective, read all of it:

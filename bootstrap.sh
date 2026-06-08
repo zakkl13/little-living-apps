@@ -94,6 +94,14 @@ sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__REPO_DIR__|$REPO_DIR|g" -e "s|__MISE
 systemctl daemon-reload
 systemctl enable lila-manager.service
 
+# Expose the app scaffolder on PATH so a worker (or you) can run `lila-new-app` to stand up the
+# Rails 8 + PWA app the team builds. See bin/new-app.
+cat > /usr/local/bin/lila-new-app <<EOF
+#!/usr/bin/env bash
+exec sudo bash "$REPO_DIR/bin/new-app" "\$@"
+EOF
+chmod +x /usr/local/bin/lila-new-app
+
 # --- 8. Codex auth (interactive, one-time) ----------------------------------------------------
 if run_as "CODEX_HOME='$CODEX_HOME' '$MISE' exec -- codex login status" >/dev/null 2>&1; then
   log "Codex auth present — starting the service"

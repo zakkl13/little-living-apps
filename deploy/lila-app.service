@@ -1,0 +1,26 @@
+# systemd unit for the one app the agent builds & maintains (Rails 8). bin/new-app substitutes the
+# __PLACEHOLDERS__ and installs this to /etc/systemd/system/lila-app.service.
+#
+# RELOAD MODE: runs in the development environment on purpose, so a worker's edits to existing code
+# go live on the NEXT request (no restart). Structural changes — a new gem, an initializer, routes —
+# still need:  sudo systemctl restart lila-app
+#
+# The app binds to localhost only; expose it (behind your domain) with Caddy (deploy/Caddyfile),
+# which terminates TLS and reverse-proxies to this port. Nothing here is public on its own.
+[Unit]
+Description=little-living-apps app (the Rails 8 app the agent builds & maintains)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=-/etc/lila/app.env
+Environment=RAILS_ENV=development
+ExecStart=__MISE__ exec -- bin/rails server -b 127.0.0.1 -p __PORT__
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

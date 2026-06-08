@@ -61,12 +61,19 @@ Then message your bot. The manager delegates to workers and reports back; `/stat
 state; `/new` clears the working transcript (long-term memory is kept). `bootstrap.sh` is idempotent
 — re-run it after pulling changes (then `sudo systemctl restart lila-manager`).
 
+**The app.** Ask the bot to build something and a worker scaffolds the app with `lila-new-app` — a
+minimal **Rails 8 + PWA** project (SQLite + the Solid stack, Hotwire, Rails' built-in auth) run in
+**reload mode** (edits go live on the next request). It binds to `127.0.0.1:3000`, private to the
+box. To publish it behind your own domain with automatic HTTPS, point DNS at the host and run Caddy
+with `deploy/Caddyfile`.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `bootstrap.sh` | One-shot host setup: mise (Ruby+Node), Codex CLI, build, data dirs, systemd unit. |
-| `deploy/lila-manager.service` | systemd unit template (`bootstrap.sh` fills it in). |
+| `bin/new-app` | Thin scaffolder for the app: minimal Rails 8 + PWA (+ built-in auth), installs+starts its service. Run via `lila-new-app`. |
+| `deploy/` | `lila-manager.service`, `lila-app.service` (unit templates), `Caddyfile` (publish the app behind your domain). |
 | `.mise.toml` | Pinned Ruby + Node versions. |
 | `src/config.ts` | Env loading + validation; requires `ANTHROPIC_API_KEY`; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard). |
 | `src/app.ts` | Composition root: wires memory + orchestrator + tool registry + loop + snapshots; `ingestTelegramUpdate`, `persist`/`restore`. |
@@ -110,6 +117,8 @@ npm test           # runs with --experimental-sqlite (node:sqlite)
 
 ## Status
 
-The opinionated app runtime (Rails 8: SQLite + Solid stack, auth, Hotwire, PWA, reload mode) is the
-next milestone — see `MIGRATION.md`. Today the agent system runs on a host and can build whatever a
-Codex worker can scaffold; the runtime template is what will make the apps it builds good-by-default.
+Host-native and runnable: the manager runs on a plain VM via long-poll (Phases 1–3), and the
+opinionated app runtime is a minimal **Rails 8 + PWA** scaffold (`lila-new-app`) in reload mode
+(Phase 4). See `MIGRATION.md` for the full plan and what was removed. The runtime is deliberately
+thin — Rails 8 defaults plus PWA, built-in auth, and a reserved `/_agent/*` path — so the agent
+builds *on top* rather than fighting a heavy template.
