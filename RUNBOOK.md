@@ -119,7 +119,8 @@ Installs mise (Ruby+Node), the Codex CLI, builds the manager, creates data dirs 
 the `lila-manager` systemd unit (enabled, not started until Codex auth exists), and drops
 `lila-new-app` on PATH. Idempotent.
 
-_(build time / memory notes: filled in after the run completes.)_
+Build time on t4g.small: ~10 min, almost all of it compiling Ruby (gotcha #3). The manager comes up
+auto-started only once Codex auth exists (step 5); otherwise it's enabled-but-stopped.
 
 ---
 
@@ -142,9 +143,7 @@ sudo systemctl restart lila-manager
 journalctl -u lila-manager -f      # expect "little-living-apps (v0.2 manager) ready"
 ```
 Then message your bot on Telegram. `CODEX_HOME` persists on the VM disk, so this auth survives
-reboots.
-
-_(TBD: confirm the exact device-auth UX over an SSM session.)_
+reboots. See gotchas #4–#6 for the `CODEX_HOME`, PATH, and device-auth details.
 
 ---
 
@@ -179,3 +178,26 @@ first request and `https://lillivinapps.zakk.io` serves the app (gated by Rails'
 ## Running list of gotchas / learnings
 1. **CDK `REVIEW_IN_PROGRESS` = unexecuted change set.** The security prompt wasn't answered `y`;
    re-run `cdk deploy`. (See step 1.)
+2. **Driving `bootstrap.sh` over SSM needs `SERVICE_USER=ubuntu`** — `send-command` runs as root
+   with no `$SUDO_USER`, and bootstrap refuses to run the service as root.
+3. **Ruby compile is the long pole.** On t4g.small (2 vCPU ARM) `mise install` compiling Ruby 3.3
+   took ~10 min; the rest of bootstrap is quick. The 4 GB swap (from CDK user-data) keeps it from
+   OOMing. Run bootstrap detached + tail the log, don't block an SSM call on it.
+4. **The old `.env` lacked `CODEX_HOME`.** The manager (and `codex login`) must agree on
+   `CODEX_HOME=/var/lib/lila/codex`, or the service won't find the auth. `.env.example` has it;
+   ensure it's in `/etc/lila/lila.env`.
+5. **Invoking `codex` standalone:** `mise exec -- codex` fails (`ENOENT`) and `sudo … codex` loses
+   PATH (sudo's `secure_path`). What works: call the binary by absolute path with PATH set for its
+   `#!/usr/bin/env node` shebang —
+   `sudo -u ubuntu -H CODEX_HOME=… PATH="$NODEBIN:/usr/bin:/bin" $NODEBIN/codex …` where
+   `$NODEBIN=~ubuntu/.local/share/mise/installs/node/<v>/bin`. (At runtime the manager spawns Codex
+   via the SDK's own vendored arm64 binary, so this only matters for the manual `codex login`.)
+6. **`codex login --device-auth` over SSM:** launch it detached to a logfile, read the printed URL +
+   one-time code, approve in a browser, then poll for `$CODEX_HOME/auth.json` to appear.
+7. **Rails host-authorization blocks the domain in reload (development) mode** → 403 "Blocked
+   hosts". The app must permit its published host; Caddy forwards the original Host. `bin/new-app`
+   now injects `config.hosts << "<LILA_DOMAIN>"` into `config/environments/development.rb`. Config
+   changes aren't hot-reloaded, so this needs a `systemctl restart lila-app`.
+8. **Caddy isn't in stock Ubuntu repos** and its `{$LILA_DOMAIN}` env-var form resolves to
+   `localhost` under the apt `caddy.service` — bootstrap adds the official repo and substitutes the
+   literal domain into `/etc/caddy/Caddyfile`. (See step 7.)
