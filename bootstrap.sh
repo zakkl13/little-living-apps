@@ -102,7 +102,28 @@ exec sudo bash "$REPO_DIR/bin/new-app" "\$@"
 EOF
 chmod +x /usr/local/bin/lila-new-app
 
-# --- 8. Codex auth (interactive, one-time) ----------------------------------------------------
+# --- 8. Publish the app behind your domain (Caddy auto-HTTPS), if LILA_DOMAIN is set -----------
+# Caddy is the TLS terminator that puts the app on your domain. It is NOT in the stock Ubuntu repos,
+# so we add its official apt repo, then write /etc/caddy/Caddyfile with the domain baked in (the
+# apt-managed caddy.service reads that file and has no env vars, so the domain must be literal).
+LILA_DOMAIN="${LILA_DOMAIN:-$(grep -E '^LILA_DOMAIN=' "$REPO_DIR/.env" 2>/dev/null | cut -d= -f2- | tr -d '"'\''' )}"
+if [[ -n "$LILA_DOMAIN" ]]; then
+  log "Publishing the app on https://$LILA_DOMAIN (Caddy)"
+  if ! command -v caddy >/dev/null 2>&1; then
+    apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' > /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update -y && apt-get install -y caddy
+  fi
+  sed "s|{\$LILA_DOMAIN:localhost}|$LILA_DOMAIN|" "$REPO_DIR/deploy/Caddyfile" > /etc/caddy/Caddyfile
+  systemctl enable caddy >/dev/null 2>&1 || true
+  systemctl reload caddy 2>/dev/null || systemctl restart caddy
+  log "Caddy serving https://$LILA_DOMAIN -> 127.0.0.1:3000 (cert issues on first request; needs 80/443 open + DNS at this host)."
+else
+  log "LILA_DOMAIN not set — skipping Caddy; the app stays private to the host (publish later by setting LILA_DOMAIN and re-running)."
+fi
+
+# --- 9. Codex auth (interactive, one-time) ----------------------------------------------------
 if run_as "CODEX_HOME='$CODEX_HOME' '$MISE' exec -- codex login status" >/dev/null 2>&1; then
   log "Codex auth present — starting the service"
   systemctl restart lila-manager.service
