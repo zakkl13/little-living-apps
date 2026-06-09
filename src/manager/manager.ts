@@ -56,6 +56,8 @@ export interface TurnDeps {
   buildSystem: () => string;
   onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void;
   maxIterations?: number;
+  /** Monotonic turn id, passed into the tool dispatch ctx for request→worker tracing. */
+  turnId?: number;
 }
 
 const DEFAULT_MAX_ITERATIONS = 16;
@@ -108,7 +110,7 @@ export async function runManagerTurn(
 
     const results: Block[] = [];
     for (const use of uses) {
-      const result = await deps.registry.dispatch(use.name, use.input, { chatId });
+      const result = await deps.registry.dispatch(use.name, use.input, { chatId, turnId: deps.turnId ?? 0 });
       results.push({
         type: "tool_result",
         tool_use_id: use.id,

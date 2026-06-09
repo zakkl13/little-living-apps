@@ -81,6 +81,8 @@ export interface MemFs {
   loadSystem(): string;
   /** Tree listing of non-system files with their frontmatter descriptions. */
   treeListing(): string;
+  /** Every memory file (repo-relative path + raw body), for read-only inspection. */
+  listAll(): Array<{ path: string; body: string }>;
   /** FTS over all memory files. */
   search(query: string, limit?: number): SearchHit[];
   /** FTS restricted to `recall/`. */
@@ -268,6 +270,12 @@ export function openMemFs(opts: MemFsOptions): MemFs {
         lines.push(`${toolPathOf(rel)}${desc}`);
       }
       return lines.length ? lines.join("\n") : "(no archival/recall files yet)";
+    },
+
+    listAll() {
+      return walkFiles(dir)
+        .sort()
+        .map((rel) => ({ path: rel, body: readFileSync(abs(rel), "utf8") }));
     },
 
     search(query, limit = 10) {

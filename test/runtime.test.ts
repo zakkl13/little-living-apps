@@ -36,7 +36,7 @@ describe("snapshot store", () => {
     const config = buildConfig();
     const store = openSnapshotStore(config.managerStateDir);
     const snap: ManagerSnapshot = {
-      version: 1,
+      version: 2,
       transcript: [
         { role: "user", content: [{ type: "text", text: "hi" }] },
         { role: "assistant", content: [{ type: "compaction", id: "cmp_1" }, { type: "text", text: "ok" }] },

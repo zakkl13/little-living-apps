@@ -35,6 +35,17 @@ export interface Config {
   managerModel: string;
   /** Anthropic Messages base URL; overridden in tests to point at a fake (no real API). */
   anthropicBaseUrl?: string;
+
+  // --- Inspector: read-only observability plane (off by default) ---
+  /** Stand up the localhost Inspector HTTP server (env INSPECTOR_ENABLED=true). */
+  inspectorEnabled: boolean;
+  /** Port the Inspector binds on 127.0.0.1; Caddy fronts it at /_inspect. */
+  inspectorPort: number;
+  /** Shared secret required on every Inspector request (defense in depth even on localhost). */
+  inspectorToken?: string;
+  /** Nominal $ per million input/output tokens for the manager model (cost estimates only). */
+  inspectorPriceIn: number;
+  inspectorPriceOut: number;
 }
 
 export class ConfigError extends Error {}
@@ -89,6 +100,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const codexPathOverride = env.CODEX_BIN?.trim() || undefined;
 
+  const inspectorEnabled = /^(1|true|yes)$/i.test(env.INSPECTOR_ENABLED?.trim() ?? "");
+  const inspectorPort = numEnv(env.INSPECTOR_PORT, 9090);
+  const inspectorToken = env.INSPECTOR_TOKEN?.trim() || undefined;
+
   return {
     telegramBotToken,
     allowedUserIds,
@@ -106,5 +121,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/var/lib/lila/state",
     managerModel: env.MANAGER_MODEL?.trim() || "claude-opus-4-8",
     ...(env.ANTHROPIC_BASE_URL?.trim() ? { anthropicBaseUrl: env.ANTHROPIC_BASE_URL.trim() } : {}),
+
+    inspectorEnabled,
+    inspectorPort,
+    ...(inspectorToken ? { inspectorToken } : {}),
+    inspectorPriceIn: numEnv(env.INSPECTOR_PRICE_IN, 15),
+    inspectorPriceOut: numEnv(env.INSPECTOR_PRICE_OUT, 75),
   };
+}
+
+function numEnv(raw: string | undefined, fallback: number): number {
+  const n = Number(raw?.trim());
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }

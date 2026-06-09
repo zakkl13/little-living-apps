@@ -21,13 +21,16 @@ import { join } from "node:path";
 import type { ModelMessage } from "../manager/anthropic.js";
 import type { ManagerEvent } from "./eventQueue.js";
 import type { WorkerSnapshot } from "../workers/registry.js";
+import type { CostSnapshot } from "./telemetry.js";
 import { logger } from "../logger.js";
 
 export interface ManagerSnapshot {
-  version: 1;
+  version: 2;
   transcript: ModelMessage[];
   queue: ManagerEvent[];
   workers: WorkerSnapshot[];
+  /** Cumulative Inspector cost meter; absent in v1 snapshots and when the Inspector is off. */
+  cost?: CostSnapshot;
 }
 
 export interface SnapshotStore {
@@ -53,16 +56,29 @@ export function openSnapshotStore(dir: string): SnapshotStore {
     load() {
       if (!existsSync(path)) return undefined;
       try {
-        const parsed = JSON.parse(readFileSync(path, "utf8")) as Partial<ManagerSnapshot>;
-        // We are the only writer (version 1 always carries all three arrays); a missing field
-        // means the file is corrupt/truncated, so ignore it rather than papering over it.
+        const parsed = JSON.parse(readFileSync(path, "utf8")) as {
+          version?: number;
+          transcript?: ModelMessage[];
+          queue?: ManagerEvent[];
+          workers?: WorkerSnapshot[];
+          cost?: CostSnapshot;
+        };
+        // We are the only writer; every version carries all three arrays. A missing field means the
+        // file is corrupt/truncated, so ignore it rather than papering over it. v1 snapshots (no
+        // cost field) load fine — cost just starts from zero, which is correct.
         if (
-          parsed.version === 1 &&
+          (parsed.version === 1 || parsed.version === 2) &&
           Array.isArray(parsed.transcript) &&
           Array.isArray(parsed.queue) &&
           Array.isArray(parsed.workers)
         ) {
-          return { version: 1, transcript: parsed.transcript, queue: parsed.queue, workers: parsed.workers };
+          return {
+            version: 2,
+            transcript: parsed.transcript as ModelMessage[],
+            queue: parsed.queue as ManagerEvent[],
+            workers: parsed.workers as WorkerSnapshot[],
+            ...(parsed.cost ? { cost: parsed.cost } : {}),
+          };
         }
         logger.warn("Snapshot had unexpected shape; ignoring", { path });
       } catch (err) {

@@ -13,5 +13,14 @@
 # Access control is the app's job: generate Rails' built-in auth (bin/rails generate authentication)
 # so only you + invited users get in. Caddy just publishes; it does not authenticate.
 {$LILA_DOMAIN:localhost} {
+	# Inspector: the manager's read-only observability plane. Only routed when the manager is started
+	# with INSPECTOR_ENABLED=true (it binds 127.0.0.1:9090). The manager checks INSPECTOR_TOKEN on
+	# every request; uncomment basic_auth below for a second factor. handle_path strips the /_inspect
+	# prefix, so the inspector server sees plain /, /api/*. Visit https://your-domain/_inspect/?t=TOKEN
+	handle_path /_inspect/* {
+		# basic_auth { you JDJhJDE0... }   # optional: generate the hash with `caddy hash-password`
+		reverse_proxy 127.0.0.1:9090
+	}
+
 	reverse_proxy 127.0.0.1:3000
 }

@@ -12,6 +12,8 @@ export interface ToolResult {
 export interface ToolHandlerCtx {
   /** The owner chat this turn is serving (worker attribution / logging). */
   chatId: number;
+  /** Monotonic id of the turn this call runs in; stamps worker prompts for request→worker tracing. */
+  turnId: number;
 }
 
 export type ToolHandler = (

@@ -173,6 +173,35 @@ first request and `https://lillivinapps.zakk.io` serves the app (gated by Rails'
 - The Caddyfile env-var form `{$LILA_DOMAIN:localhost}` resolves to `localhost` under the apt
   `caddy.service` (no env), so bootstrap substitutes the real domain into `/etc/caddy/Caddyfile`.
 
+## 8. Inspector — read-only deep dive into the manager (optional)
+
+A toggleable, **read-only** HTTP plane that shows the manager's live conversation (with tool calls,
+results, and token counts), all stored memories, every Codex worker prompt, a request→worker trace,
+a nominal cost meter, and the target app's memory-bank files. It is **never a model tool** and never
+mutates state — purely an observer. Off by default.
+
+Enable it in `/etc/lila/lila.env` (or `.env`) and restart the manager:
+```bash
+INSPECTOR_ENABLED=true
+INSPECTOR_TOKEN=$(openssl rand -hex 24)   # required guard; any long random string
+# INSPECTOR_PORT=9090                     # default; what Caddy proxies to
+sudo systemctl restart lila-manager
+```
+It binds **127.0.0.1 only**. The `deploy/Caddyfile` already ships a `handle_path /_inspect/*` block
+(carried into `/etc/caddy/Caddyfile` by bootstrap), so once enabled you reach it at:
+```
+https://<your-domain>/_inspect/?t=<INSPECTOR_TOKEN>
+```
+For a second factor, uncomment the `basic_auth` line in the Caddyfile (`caddy hash-password`) and
+reload Caddy. When the Inspector is disabled, `/_inspect` simply returns 502 — harmless.
+
+**Notes:**
+- Cost is a *nominal* estimate from `INSPECTOR_PRICE_IN`/`OUT` ($/Mtok, default 15/75) over the
+  manager's Anthropic tokens; Codex workers ride the ChatGPT subscription, so they show a turn count
+  with `$0 metered`. Lifetime totals survive restarts (folded into the crash snapshot).
+- History is bounded in-memory (last ~500 turns); the live transcript is the source of truth for
+  the current conversation.
+
 ---
 
 ## Running list of gotchas / learnings

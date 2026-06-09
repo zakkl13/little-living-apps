@@ -16,7 +16,7 @@ export interface LoopDeps {
   queue: EventQueue;
   /** Default owner chat for worker_event / tick turns (owner_message carries its own chatId). */
   ownerChatId: number;
-  runTurn: (event: ManagerEvent, chatId: number) => Promise<void>;
+  runTurn: (event: ManagerEvent, chatId: number, turnId: number) => Promise<void>;
   /** Persistence hook, run after every turn (snapshot transcript + queue) — DESIGN §11. */
   onTurnComplete?: () => void | Promise<void>;
 }
@@ -24,6 +24,7 @@ export interface LoopDeps {
 export function createLoop(deps: LoopDeps): ManagerLoop {
   let draining = false;
   let stopped = false;
+  let turnCounter = 0;
   let idleWaiters: Array<() => void> = [];
 
   const chatIdFor = (e: ManagerEvent): number =>
@@ -41,8 +42,9 @@ export function createLoop(deps: LoopDeps): ManagerLoop {
     try {
       while (!stopped && !deps.queue.isEmpty()) {
         const event = deps.queue.dequeue()!;
+        turnCounter += 1;
         try {
-          await deps.runTurn(event, chatIdFor(event));
+          await deps.runTurn(event, chatIdFor(event), turnCounter);
         } catch (err) {
           logger.error("Manager turn crashed", { event: event.kind, error: (err as Error).message });
         }

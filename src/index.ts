@@ -8,6 +8,8 @@ import { startPoller } from "./transport/poller.js";
 import { createCodexRunner } from "./workers/runner.js";
 import { createAnthropicModel } from "./manager/anthropic.js";
 import { createManagerApp } from "./app.js";
+import { startInspector, type InspectorServer } from "./inspector/server.js";
+import { openAppFiles } from "./inspector/appfiles.js";
 import { logger } from "./logger.js";
 
 async function main(): Promise<void> {
@@ -50,6 +52,27 @@ async function main(): Promise<void> {
   app.restore(); // cold-restart recovery: transcript + queue + workers
   app.start();
 
+  // Inspector: read-only observability plane (off by default). Bound to 127.0.0.1; Caddy fronts it
+  // at /_inspect. It only observes — never a model tool, never mutates runtime state.
+  let inspector: InspectorServer | undefined;
+  if (config.inspectorEnabled) {
+    if (!config.inspectorToken) {
+      logger.warn("Inspector enabled without INSPECTOR_TOKEN — relying on Caddy basic_auth as the guard");
+    }
+    inspector = startInspector({
+      port: config.inspectorPort,
+      ...(config.inspectorToken ? { token: config.inspectorToken } : {}),
+      managerModel: config.managerModel,
+      workspaceDir: config.workspaceDir,
+      appPublicUrl: config.appPublicUrl,
+      telemetry: app.telemetry,
+      transcript: () => app.transcript.snapshot(),
+      memories: () => app.mem.listAll(),
+      workers: () => app.orchestrator.registry.snapshot(),
+      appFiles: openAppFiles(config.workspaceDir),
+    });
+  }
+
   // Outbound-only transport: clear any stale webhook, then long-poll. No inbound port is opened.
   await telegram.deleteWebhook().catch((err) =>
     logger.warn("deleteWebhook failed (continuing)", { error: (err as Error).message }),
@@ -62,6 +85,7 @@ async function main(): Promise<void> {
   const shutdown = async (sig: string): Promise<void> => {
     logger.info(`Received ${sig}, shutting down`);
     await poller.stop().catch(() => undefined);
+    await inspector?.close().catch(() => undefined);
     await app.close().catch(() => undefined);
     process.exit(0);
   };

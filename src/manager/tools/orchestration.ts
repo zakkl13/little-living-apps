@@ -5,6 +5,17 @@
 
 import type { ToolModule } from "./types.js";
 
+/** The slice of Telemetry the orchestration tools write to (decoupled so tests can pass a stub or
+ *  nothing at all). Records the exact Codex prompt the manager dispatched, stamped with the turn. */
+export interface PromptRecorder {
+  recordPrompt(rec: {
+    turnId: number;
+    workerId: string;
+    kind: "start" | "send" | "steer" | "cancel";
+    prompt: string;
+  }): void;
+}
+
 export type WorkerStatus = "running" | "idle" | "failed" | "canceled";
 
 export interface WorkerInfo {
@@ -53,7 +64,10 @@ const SUBAGENT_SPECS: ToolModule["specs"] = [
   }, ["id"]),
 ];
 
-export function orchestrationToolModule(orchestrator?: Orchestrator): ToolModule {
+export function orchestrationToolModule(
+  orchestrator?: Orchestrator,
+  telemetry?: PromptRecorder,
+): ToolModule {
   const need = (): Orchestrator => {
     if (!orchestrator) throw new Error("worker orchestration is not available");
     return orchestrator;
@@ -61,20 +75,27 @@ export function orchestrationToolModule(orchestrator?: Orchestrator): ToolModule
   return {
     specs: SUBAGENT_SPECS,
     handlers: {
-      subagent_start: (input) => {
-        const w = need().start(String(input.objective ?? ""), optStr(input.project));
+      subagent_start: (input, ctx) => {
+        const objective = String(input.objective ?? "");
+        const w = need().start(objective, optStr(input.project));
+        telemetry?.recordPrompt({ turnId: ctx.turnId, workerId: w.id, kind: "start", prompt: objective });
         return { content: `started worker ${w.id} (${w.status}) — ${w.purpose}` };
       },
-      subagent_send: (input) => {
-        const w = need().send(String(input.id), String(input.message ?? ""));
+      subagent_send: (input, ctx) => {
+        const message = String(input.message ?? "");
+        const w = need().send(String(input.id), message);
+        telemetry?.recordPrompt({ turnId: ctx.turnId, workerId: w.id, kind: "send", prompt: message });
         return { content: `sent to ${w.id} (${w.status})` };
       },
-      subagent_steer: (input) => {
-        const w = need().steer(String(input.id), String(input.guidance ?? ""));
+      subagent_steer: (input, ctx) => {
+        const guidance = String(input.guidance ?? "");
+        const w = need().steer(String(input.id), guidance);
+        telemetry?.recordPrompt({ turnId: ctx.turnId, workerId: w.id, kind: "steer", prompt: guidance });
         return { content: `steering ${w.id} (${w.status})` };
       },
-      subagent_cancel: (input) => {
+      subagent_cancel: (input, ctx) => {
         const w = need().cancel(String(input.id));
+        telemetry?.recordPrompt({ turnId: ctx.turnId, workerId: w.id, kind: "cancel", prompt: "" });
         return { content: `canceled ${w.id} (${w.status})` };
       },
       subagent_poll: (input) => {

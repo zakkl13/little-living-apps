@@ -17,6 +17,8 @@ import { createTranscript, runManagerTurn, type DeliverFn, type Transcript } fro
 import { createEventQueue, type EventQueue } from "./runtime/eventQueue.js";
 import { createLoop, type ManagerLoop } from "./runtime/loop.js";
 import { openSnapshotStore } from "./runtime/snapshot.js";
+import { createTelemetry, type Telemetry } from "./runtime/telemetry.js";
+import type { ManagerEvent } from "./runtime/eventQueue.js";
 import type { TelegramUpdate } from "./transport/telegram.js";
 
 import type { CodexRunner } from "./workers/runner.js";
@@ -40,6 +42,8 @@ export interface ManagerApp {
   mem: MemFs;
   orchestrator: WorkerOrchestrator;
   transcript: Transcript;
+  /** Passive observability recorder (read by the Inspector; fed by the loop + tool layer). */
+  telemetry: Telemetry;
   /** Enqueue an owner message (the poller calls this after authorizing). */
   enqueueOwner(chatId: number, text: string): void;
   /** Authorize + handle commands + enqueue, from a raw Telegram update (the poller sink). */
@@ -59,6 +63,10 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
   const transcript = createTranscript();
   const queue = createEventQueue();
   const snapshots = openSnapshotStore(config.managerStateDir);
+  const telemetry = createTelemetry({
+    priceInPerMTok: config.inspectorPriceIn,
+    priceOutPerMTok: config.inspectorPriceOut,
+  });
   const ownerChatId = config.allowedUserIds[0]!;
 
   const orchestrator = createOrchestrator({
@@ -72,7 +80,7 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
 
   const registry = buildRegistry([
     memoryToolModule(mem),
-    orchestrationToolModule(orchestrator),
+    orchestrationToolModule(orchestrator, telemetry),
   ]);
 
   const fmtWorker = (w: WorkerInfo): string => `- ${w.id} [${w.status}] ${w.purpose} @ ${w.project}`;
@@ -127,32 +135,46 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
 
   function persist(): void {
     snapshots.save({
-      version: 1,
+      version: 2,
       transcript: transcript.snapshot(),
       queue: queue.snapshot(),
       workers: orchestrator.registry.snapshot(),
+      cost: telemetry.costSnapshot(),
     });
   }
+
+  const requestText = (event: ManagerEvent): string =>
+    event.kind === "owner_message"
+      ? event.text
+      : `[worker ${event.workerId} ${event.status}] ${event.summary}`;
 
   const loop = createLoop({
     queue,
     ownerChatId,
-    runTurn: (event, chatId) =>
-      runManagerTurn(event, chatId, {
-        model,
-        modelName: config.managerModel,
-        registry,
-        transcript,
-        deliver,
-        buildSystem: () => {
-          const runtime = {
-            appPublicUrl: config.appPublicUrl,
-            workspaceDir: config.workspaceDir,
-          };
-          const line = workersLine();
-          return buildSystemPrompt(line ? { mem, runtime, workersLine: line } : { mem, runtime });
-        },
-      }),
+    runTurn: async (event, chatId, turnId) => {
+      telemetry.beginTurn(turnId, event.kind, requestText(event), chatId);
+      try {
+        await runManagerTurn(event, chatId, {
+          model,
+          modelName: config.managerModel,
+          registry,
+          transcript,
+          deliver,
+          turnId,
+          onUsage: (usage) => telemetry.recordUsage(turnId, usage),
+          buildSystem: () => {
+            const runtime = {
+              appPublicUrl: config.appPublicUrl,
+              workspaceDir: config.workspaceDir,
+            };
+            const line = workersLine();
+            return buildSystemPrompt(line ? { mem, runtime, workersLine: line } : { mem, runtime });
+          },
+        });
+      } finally {
+        telemetry.endTurn(turnId);
+      }
+    },
     onTurnComplete: persist,
   });
 
@@ -162,6 +184,7 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     mem,
     orchestrator,
     transcript,
+    telemetry,
     enqueueOwner: (chatId, text) => queue.enqueue({ kind: "owner_message", chatId, text }),
     ingestTelegramUpdate(update) {
       const msg = update.message ?? update.edited_message;
@@ -190,6 +213,7 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
       transcript.load(snap.transcript);
       queue.load(snap.queue);
       orchestrator.registry.rehydrate(snap.workers);
+      if (snap.cost) telemetry.loadCost(snap.cost);
       logger.info("Restored manager state from snapshot", {
         messages: snap.transcript.length,
         pending: snap.queue.length,
