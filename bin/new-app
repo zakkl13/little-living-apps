@@ -71,7 +71,18 @@ DEV_ENV="$APP_DIR/config/environments/development.rb"
 DOMAIN="${LILA_DOMAIN:-$(grep -E '^LILA_DOMAIN=' /etc/lila/lila.env 2>/dev/null | cut -d= -f2- | tr -d '"'\''' )}"
 if [[ -n "$DOMAIN" && -f "$DEV_ENV" ]] && ! grep -q "lila published host" "$DEV_ENV"; then
   log "Allowing published host $DOMAIN in development host-authorization"
+  # If this is an already-checkpointed Rails app, checkpoint this platform-managed host auth line
+  # immediately. During the initial scaffold the app tree is still untracked; the worker's scaffold
+  # commit will include this line with the rest of the generated app.
+  can_checkpoint_host=0
+  if run_as "cd '$APP_DIR' && git ls-files --error-unmatch config/environments/development.rb >/dev/null 2>&1 && git diff --quiet -- config/environments/development.rb"; then
+    can_checkpoint_host=1
+  fi
   run_as "sed -i 's|^Rails.application.configure do|Rails.application.configure do\n  config.hosts << \"$DOMAIN\" # lila published host|' '$DEV_ENV'"
+  if [[ "$can_checkpoint_host" -eq 1 ]]; then
+    run_as "cd '$APP_DIR' && git add config/environments/development.rb && git commit -m 'Allow published host in development' >/dev/null"
+    log "Committed published-host allowance in the app repo"
+  fi
 fi
 
 # --- 3. Prepare the databases (SQLite + Solid Queue/Cache/Cable) -------------------------------

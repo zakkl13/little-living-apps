@@ -13,11 +13,12 @@ import {
 } from "../src/workers/protocol.js";
 
 describe("worker protocol", () => {
-  it("prepends the summary-block + git guidance to every prompt, then the task", () => {
+  it("prepends the summary-block + checkpoint guidance to every prompt, then the task", () => {
     const out = withProtocol("do the thing");
     assert.ok(out.includes(MANAGER_SUMMARY_MARKER), "tells the worker the exact marker to use");
     assert.match(out, /only thing it\s+receives/i, "explains the manager only sees the summary");
-    assert.match(out, /don't worry about git/i, "tells workers to leave git alone for now");
+    assert.match(out, /git status --short/i, "tells workers to inspect the worktree");
+    assert.match(out, /Commit your own finished edits/i, "tells workers to checkpoint their work");
     assert.ok(out.endsWith("do the thing"), "the task comes last, after the protocol");
     assert.ok(out.startsWith(WORKER_PROTOCOL), "protocol is the preamble");
   });

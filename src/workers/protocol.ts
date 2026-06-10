@@ -4,7 +4,7 @@
 //      one thing it can't otherwise know: the manager never sees its transcript, tool output, or
 //      files — ONLY a summary block it must write. So we spell out that block's format + size budget
 //      up front, instead of the manager discovering the limit reactively and asking for resends.
-//      It also tells workers to leave git/version-control alone for now.
+//      It also tells workers to preserve clean checkpoint discipline.
 //
 //   2. extractManagerSummary / managerSummarizer — the reader half. We pull just that block back out
 //      of the worker's full output, so the manager's context carries the worker's own intended
@@ -25,9 +25,11 @@ export const WORKER_PROTOCOL = [
   "  by a tight report in 150 words or less: what you did, which files changed, any commit, and concrete",
   "  verification (HTTP status codes, test results, command output). Write normally above it — only this",
   "  block is relayed, so do not pad it and do not rely on anything outside it reaching the manager.",
-  "- Don't worry about git or the repo's commit state right now: leave any pre-existing uncommitted",
-  "  changes alone (don't revert, stash, or flag them) and don't block on version-control concerns.",
-  "  Just make your change and verify it works.",
+  "- Check `git status --short` before editing. Do not modify unrelated dirty files. If a file you",
+  "  need to edit is already dirty, inspect the diff first and work with it deliberately; report that",
+  "  context in your summary.",
+  "- Commit your own finished edits in small logical units. If you cannot commit, say exactly why and",
+  "  include the remaining `git status --short` in your summary.",
   "",
   "---- your task ----",
   "",
