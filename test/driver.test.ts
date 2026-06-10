@@ -245,4 +245,37 @@ describe("ManagerDriver turn", () => {
     assert.equal(h.sent.length, 1);
     assert.match(h.sent[0]!.text, /auth problem/i);
   });
+
+  // Regression: the real Codex SDK yields turn.failed THEN throws "Codex Exec exited with code 1:
+  // <stderr>" because codex exec exits non-zero on a failed turn, leaving only the
+  // "Reading prompt from stdin..." banner on stderr. The captured turn.failed reason must win over
+  // that generic throw, so the owner sees the real cause (e.g. a usage limit) — not the banner.
+  it("keeps the streamed turn.failed reason when the SDK then throws on exit code 1", async () => {
+    const sent: Array<{ chatId: number; text: string }> = [];
+    const reason = "You've hit your usage limit. Try again at 9:33 PM.";
+    const thread: ManagerThread = {
+      id: "thread-1",
+      async runStreamed() {
+        return {
+          events: (async function* () {
+            yield turnFailed(reason);
+            throw new Error("Codex Exec exited with code 1: Reading prompt from stdin...\n");
+          })(),
+        };
+      },
+    };
+    const factory: ManagerThreadFactory = { start: () => thread, resume: () => thread };
+    const driver = createManagerDriver({
+      factory,
+      deliver: async (chatId, text) => {
+        sent.push({ chatId, text });
+      },
+      buildContextHeader: () => "",
+    });
+
+    await driver.runTurn({ text: "x" }, 7);
+    assert.equal(sent.length, 1);
+    assert.match(sent[0]!.text, /usage limit/i, "real reason surfaces");
+    assert.doesNotMatch(sent[0]!.text, /Reading prompt from stdin/, "stderr banner is not surfaced");
+  });
 });

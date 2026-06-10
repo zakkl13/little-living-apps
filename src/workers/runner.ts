@@ -76,6 +76,12 @@ export function formatItem(item: ThreadItem): string | undefined {
 
 export function friendlyError(detail: string): string {
   const clipped = detail.slice(0, 1500);
+  if (/usage limit|rate limit|quota|too many requests|429|purchase more credits/i.test(clipped)) {
+    return (
+      `⚠️ Codex hit a usage limit on the ChatGPT subscription. Wait for the window to reset or ` +
+      `add credits/upgrade the plan backing the host's CODEX_HOME.\n\n${clipped}`
+    );
+  }
   const authish = /login|auth|401|unauthor|credential|expired/i.test(clipped);
   return authish
     ? `⚠️ Codex couldn't run — looks like an auth problem. Re-run \`codex login\` on the host ` +
@@ -104,11 +110,14 @@ export function createCodexRunner(config: Config): CodexRunner {
 
       logger.debug("Codex turn", { resume: Boolean(resumeThreadId), cwd: config.workspaceDir });
 
+      // Hoisted out of the try so the catch below can prefer it: the Codex SDK throws on ANY non-zero
+      // exit (including a clean turn.failed whose reason we already streamed), leaving only the
+      // "Reading prompt from stdin..." banner on stderr — which would otherwise mask the real cause.
+      let failure: string | undefined;
       try {
         const { events } = await thread.runStreamed(prompt, signal ? { signal } : undefined);
         if (thread.id && onThreadId) onThreadId(thread.id);
         const agentMessages: string[] = [];
-        let failure: string | undefined;
 
         for await (const event of events) {
           switch (event.type) {
@@ -141,7 +150,7 @@ export function createCodexRunner(config: Config): CodexRunner {
         return {
           ok: false,
           threadId: thread.id ?? resumeThreadId,
-          finalResponse: friendlyError((err as Error).message),
+          finalResponse: friendlyError(failure ?? (err as Error).message),
         };
       }
     },

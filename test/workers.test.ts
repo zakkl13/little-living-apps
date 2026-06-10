@@ -137,6 +137,11 @@ describe("friendlyError", () => {
   it("adds a re-auth hint when the error looks auth-related", () => {
     assert.match(friendlyError("401 unauthorized"), /codex login/);
   });
+  it("flags a usage/rate limit with actionable advice", () => {
+    const msg = friendlyError("You've hit your usage limit. Purchase more credits.");
+    assert.match(msg, /usage limit/i);
+    assert.match(msg, /credits|upgrade|reset/i);
+  });
   it("returns a generic error otherwise", () => {
     assert.match(friendlyError("disk full"), /Codex error/);
   });

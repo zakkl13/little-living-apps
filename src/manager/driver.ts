@@ -126,7 +126,11 @@ export function createManagerDriver(deps: ManagerDriverDeps): ManagerDriver {
           );
         }
       } catch (err) {
-        failure = (err as Error).message;
+        // The Codex SDK throws "Codex Exec exited with code N: <stderr>" on ANY non-zero exit —
+        // including a clean turn.failed (e.g. a usage-limit hit) whose real reason we already
+        // captured from the streamed `turn.failed`/`error` event. In that case stderr holds only the
+        // "Reading prompt from stdin..." banner, so don't let it clobber the message we have.
+        failure ??= (err as Error).message;
       }
 
       // Capture the thread id once the turn has started it; resume is no longer needed this process.
