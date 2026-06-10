@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 import type { CodexRunner } from "./runner.js";
 import { createWorkerRegistry, type WorkerRegistry } from "./registry.js";
-import type { Orchestrator, WorkerInfo } from "../manager/tools/orchestration.js";
+import type { Orchestrator, WorkerInfo } from "./types.js";
 import type { Summarize } from "./summarize.js";
 import { managerSummarizer, withProtocol } from "./protocol.js";
 import { logger } from "../logger.js";

@@ -45,7 +45,7 @@ export const INSPECTOR_HTML = String.raw`<!doctype html>
   <b>lila Inspector</b>
   <span class="stat">model <span id="h-model">—</span></span>
   <span class="stat">context <span id="h-ctx">—</span> tok</span>
-  <span class="stat">spend <span id="h-cost">—</span></span>
+  <span class="stat">tokens in/out <span id="h-tokens">—</span></span>
   <span class="stat">turns <span id="h-turns">—</span></span>
   <span class="stat">workers <span id="h-workers">—</span></span>
 </header>
@@ -56,7 +56,6 @@ const T = new URLSearchParams(location.search).get('t');
 const api = (p) => fetch(p + (p.includes('?') ? '&' : '?') + 't=' + encodeURIComponent(T || ''), { headers: { 'x-inspector-token': T || '' } }).then(r => r.json());
 const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
 const main = document.getElementById('main');
-const fmt$ = (n) => '$' + (n || 0).toFixed(4);
 const fmtT = (n) => (n || 0).toLocaleString();
 const ago = (ts) => ts ? new Date(ts).toLocaleString() : '';
 
@@ -67,7 +66,7 @@ const TABS = {
   Workers: renderWorkers,
   Memories: renderMemories,
   'App files': renderAppFiles,
-  Cost: renderCost,
+  Usage: renderUsage,
 };
 
 const nav = document.getElementById('nav');
@@ -84,7 +83,7 @@ async function refreshHeader() {
   const o = await api('api/overview');
   document.getElementById('h-model').textContent = o.managerModel;
   document.getElementById('h-ctx').textContent = fmtT(o.contextTokens);
-  document.getElementById('h-cost').textContent = fmt$(o.cost.costUsd);
+  document.getElementById('h-tokens').textContent = fmtT(o.usage.inputTokens) + ' / ' + fmtT(o.usage.outputTokens);
   document.getElementById('h-turns').textContent = o.counts.turns;
   document.getElementById('h-workers').textContent = o.counts.workers;
   return o;
@@ -104,17 +103,17 @@ async function renderOverview() {
     + row('Manager model', o.managerModel)
     + row('Workspace', o.workspaceDir)
     + row('App public URL', o.appPublicUrl || '(not published)')
-    + row('Context tokens (last call)', fmtT(o.contextTokens))
-    + row('Price', '$' + o.price.inPerMTok + ' in / $' + o.price.outPerMTok + ' out per Mtok'));
-  h += card('<h3>Spend</h3>'
-    + row('Manager input tokens', fmtT(o.cost.inputTokens))
-    + row('Manager output tokens', fmtT(o.cost.outputTokens))
-    + row('Estimated cost', fmt$(o.cost.costUsd))
-    + row('Manager turns', o.cost.managerTurns)
-    + row('Codex worker turns', o.cost.codexTurns + ' (subscription, $0 metered)'));
+    + row('Context tokens (last call)', fmtT(o.contextTokens)));
+  h += card('<h3>Token usage</h3>'
+    + row('Manager input tokens', fmtT(o.usage.inputTokens))
+    + row('— of which cached', fmtT(o.usage.cachedInputTokens))
+    + row('Manager output tokens', fmtT(o.usage.outputTokens))
+    + row('— of which reasoning', fmtT(o.usage.reasoningTokens))
+    + row('Manager turns', o.usage.managerTurns)
+    + row('Codex worker turns', o.usage.codexTurns + ' (subscription — no metered $)'));
   if (o.lastTurn) h += card('<h3>Last turn #' + o.lastTurn.turnId + '</h3>'
     + '<pre>' + esc(o.lastTurn.request) + '</pre>'
-    + '<div class="dim">' + o.lastTurn.iterations + ' iterations · ' + fmtT(o.lastTurn.inputTokens) + ' in / ' + fmtT(o.lastTurn.outputTokens) + ' out · ' + fmt$(o.lastTurn.costUsd) + '</div>');
+    + '<div class="dim">' + o.lastTurn.iterations + ' turn(s) · ' + fmtT(o.lastTurn.inputTokens) + ' in (' + fmtT(o.lastTurn.cachedInputTokens) + ' cached) / ' + fmtT(o.lastTurn.outputTokens) + ' out (' + fmtT(o.lastTurn.reasoningTokens) + ' reasoning)</div>');
   main.innerHTML = h;
 }
 function row(k, v) { return '<div class="row"><span class="dim">' + esc(k) + '</span><span>' + esc(v) + '</span></div>'; }
@@ -146,7 +145,7 @@ async function renderTrace() {
   for (const t of d.turns) {
     let inner = '<div class="row"><h3>#' + t.turnId + ' · ' + esc(t.kind) + '</h3><span class="dim">' + ago(t.startedAt) + '</span></div>';
     inner += '<pre>' + esc(t.request) + '</pre>';
-    inner += '<div class="dim">' + t.iterations + ' iterations · ' + fmtT(t.inputTokens) + ' in / ' + fmtT(t.outputTokens) + ' out · ' + fmt$(t.costUsd) + '</div>';
+    inner += '<div class="dim">' + t.iterations + ' turn(s) · ' + fmtT(t.inputTokens) + ' in / ' + fmtT(t.outputTokens) + ' out</div>';
     for (const p of t.prompts) {
       inner += '<div class="blk tool_use"><span class="tag">' + esc(p.kind) + ' → ' + esc(p.workerId) + '</span><pre>' + esc(p.prompt || '(no prompt)') + '</pre></div>';
     }
@@ -191,19 +190,20 @@ window.loadAppFile = async (p) => {
   document.getElementById('appfile-body').innerHTML = card('<h3>' + esc(p) + '</h3><pre>' + esc(d.body || d.error) + '</pre>');
 };
 
-async function renderCost() {
-  const d = await api('api/cost');
+async function renderUsage() {
+  const d = await api('api/usage');
   const m = d.meter;
-  let h = card('<h3>Cost meter</h3>'
+  let h = card('<h3>Token usage meter</h3>'
     + row('Input tokens', fmtT(m.inputTokens))
+    + row('— of which cached', fmtT(m.cachedInputTokens))
     + row('Output tokens', fmtT(m.outputTokens))
-    + row('Estimated cost', fmt$(m.costUsd))
+    + row('— of which reasoning', fmtT(m.reasoningTokens))
     + row('Manager turns', m.managerTurns)
     + row('Codex worker turns', m.codexTurns)
     + '<div class="dim" style="margin-top:8px">' + esc(d.note) + '</div>');
   let rows = d.turns.slice().reverse().map(t =>
-    '<tr><td>#' + t.turnId + '</td><td>' + esc(t.kind) + '</td><td>' + fmtT(t.inputTokens) + '</td><td>' + fmtT(t.outputTokens) + '</td><td>' + fmt$(t.costUsd) + '</td><td class="dim">' + ago(t.startedAt) + '</td></tr>').join('');
-  h += card('<h3>Per-turn</h3><table><tr><th>turn</th><th>kind</th><th>in</th><th>out</th><th>$</th><th>when</th></tr>' + rows + '</table>');
+    '<tr><td>#' + t.turnId + '</td><td>' + esc(t.kind) + '</td><td>' + fmtT(t.inputTokens) + '</td><td>' + fmtT(t.cachedInputTokens) + '</td><td>' + fmtT(t.outputTokens) + '</td><td>' + fmtT(t.reasoningTokens) + '</td><td class="dim">' + ago(t.startedAt) + '</td></tr>').join('');
+  h += card('<h3>Per-turn</h3><table><tr><th>turn</th><th>kind</th><th>in</th><th>cached</th><th>out</th><th>reasoning</th><th>when</th></tr>' + rows + '</table>');
   main.innerHTML = h;
 }
 

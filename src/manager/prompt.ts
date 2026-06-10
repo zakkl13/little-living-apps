@@ -1,7 +1,11 @@
-// Assembles the manager's system block (DESIGN §3 step 2, §4): persona + standing rules + core
-// memory (system/ bodies in full) + the archival index (tree + descriptions). The core-memory and
-// index sections are read fresh from MemFs every turn, so edits the manager makes are reflected
-// immediately on the next turn.
+// The manager's instructions, split two ways (MIGRATION-CODEX.md §6):
+//   - STATIC → AGENTS.md, written to the manager's working directory at startup. Codex reads it per
+//     session: persona, how-you-work, validation discipline, runtime facts, and the "your tools"
+//     section that tells it an ordinary message goes to the owner (NO_REPLY for silence) and that its
+//     hands are the Lila MCP memory_* / subagent_* tools.
+//   - VOLATILE → a per-turn context header, prepended to every event's input so the manager never
+//     operates without its standing memory. Read fresh from MemFs each turn (so an edit it makes is
+//     reflected immediately), and kept compact.
 
 import type { MemFs } from "../memory/memfs.js";
 
@@ -67,9 +71,24 @@ loop until it genuinely passes. Only report the work done to the user once an in
 has confirmed it. A fresh set of eyes that reads the diff and looks at the screen is how you avoid
 telling the user something is finished when it never really was.`;
 
+const YOUR_TOOLS = `Your tools — your only hands:
+
+Everything you do runs through the \`lila\` MCP server. You have no other capabilities.
+- Memory: \`memory_view\`, \`memory_create\`, \`memory_str_replace\`, \`memory_insert\`,
+  \`memory_delete\`, \`memory_rename\`, plus \`memory_search\` (all files) and \`recall_search\`
+  (past conversations). Your memory lives under /memories; the always-loaded \`system/\` core and an
+  index of the rest are prepended to every turn. Write durable facts and decisions to memory.
+- Subagents: \`subagent_start\` (spawn a Codex worker on an objective, with an explicit file scope),
+  \`subagent_send\`, \`subagent_steer\`, \`subagent_cancel\`, \`subagent_poll\`, \`subagent_list\`.
+  These return immediately; the worker runs in the background and reports back to you as an event.
+
+Talking to the user is not a tool: whatever you write as an ordinary message is delivered to them.
+Reply with exactly NO_REPLY to stay silent when nothing needs saying. If the user sends a screenshot,
+you can see it — use it.`;
+
 /**
- * Live facts about the host this manager runs on. Sourced from runtime config (env) every turn,
- * never hardcoded — so the paths/URL in the prompt always match the actual deployment.
+ * Live facts about the host this manager runs on. Sourced from runtime config (env), never
+ * hardcoded — so the paths/URL in AGENTS.md always match the actual deployment.
  */
 export interface RuntimeFacts {
   /** Where the app the team builds is served (config.appPublicUrl). Empty until published. */
@@ -97,23 +116,26 @@ operate it on your instruction; you have no hands of your own.
   unless YOU choose to publish the app (behind the owner's domain, via Caddy).`;
 }
 
-export interface SystemPromptInput {
-  mem: MemFs;
-  /** Live host facts injected from runtime config; omitted in unit tests that don't need them. */
-  runtime?: RuntimeFacts;
-  /** Active workers summary line(s), if any (mirrors the registry). */
-  workersLine?: string;
+/** The static AGENTS.md body written to the manager working directory at startup. */
+export function buildAgentsMd(runtime: RuntimeFacts): string {
+  return [
+    MANAGER_PERSONA,
+    HOW_YOU_WORK,
+    VALIDATION_DISCIPLINE,
+    renderRuntime(runtime),
+    YOUR_TOOLS,
+  ].join("\n\n");
 }
 
-export function buildSystemPrompt({ mem, runtime, workersLine }: SystemPromptInput): string {
+/**
+ * The per-turn volatile header: the always-loaded core memory (system/ bodies, which include the
+ * system/workers.md roster mirror) plus the archival/recall index. Prepended to each event's input.
+ */
+export function buildContextHeader(mem: MemFs): string {
   const core = mem.loadSystem();
   const index = mem.treeListing();
-  const sections = [MANAGER_PERSONA, HOW_YOU_WORK, VALIDATION_DISCIPLINE];
-  if (runtime) sections.push(renderRuntime(runtime));
-  sections.push(
+  return [
     "## Core memory (system/, always loaded)\n" + (core || "(empty)"),
-    "## Memory index (archival/ + recall/, pull with the memory tool's view)\n" + index,
-  );
-  if (workersLine) sections.push("## Active workers\n" + workersLine);
-  return sections.join("\n\n");
+    "## Memory index (archival/ + recall/, pull with memory_view)\n" + index,
+  ].join("\n\n");
 }

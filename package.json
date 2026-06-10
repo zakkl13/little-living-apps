@@ -1,9 +1,9 @@
 {
   "name": "little-living-apps",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Telegram → Claude manager orchestrating headless OpenAI Codex workers on a host you control, building and maintaining one little living app",
+  "description": "Telegram → Codex manager orchestrating headless OpenAI Codex workers on a host you control, building and maintaining one little living app",
   "engines": {
     "node": ">=22"
   },
@@ -20,7 +20,8 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.102.0",
-    "@openai/codex-sdk": "^0.137.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openai/codex-sdk": "^0.137.0",
+    "zod": "^4.4.3"
   }
 }

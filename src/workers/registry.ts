@@ -2,7 +2,7 @@
 // thread id (for resume/steer), an AbortController for the in-flight run, and the latest condensed
 // output. Mirrored into system/workers.md by the orchestrator so it survives cold wake.
 
-import type { WorkerInfo, WorkerStatus } from "../manager/tools/orchestration.js";
+import type { WorkerInfo, WorkerStatus } from "./types.js";
 
 export interface WorkerRecord {
   id: string;

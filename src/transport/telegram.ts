@@ -8,9 +8,21 @@ import { logger } from "../logger.js";
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
+/** One size of an inbound photo. Telegram orders the array ascending, so the last is the largest. */
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   text?: string;
+  /** Caption that accompanies a photo (used as the turn's text). */
+  caption?: string;
+  /** Photo sizes when the owner sends an image (view_image intake). */
+  photo?: TelegramPhotoSize[];
   chat: { id: number };
   from?: { id: number; username?: string; first_name?: string };
 }
@@ -40,6 +52,10 @@ export interface TelegramClient {
   /** Long-poll for new updates (outbound only — no inbound port needed). */
   getUpdates(opts?: GetUpdatesOptions): Promise<TelegramUpdate[]>;
   getMe(): Promise<{ id: number; username?: string }>;
+  /** Resolve a file_id to a server-side file path (Bot API getFile). */
+  getFile(fileId: string): Promise<{ file_path?: string }>;
+  /** Download a file (by its getFile path) as raw bytes. */
+  downloadFile(filePath: string): Promise<Buffer>;
 }
 
 export interface TelegramClientOptions {
@@ -137,6 +153,17 @@ export function createTelegramClient(opts: TelegramClientOptions): TelegramClien
 
     async getMe(): Promise<{ id: number; username?: string }> {
       return call("getMe", {});
+    },
+
+    async getFile(fileId: string): Promise<{ file_path?: string }> {
+      return call("getFile", { file_id: fileId });
+    },
+
+    async downloadFile(filePath: string): Promise<Buffer> {
+      // File downloads use the /file/bot<token>/<path> endpoint, not the JSON API surface.
+      const res = await fetch(`${opts.baseUrl}/file/bot${opts.token}/${filePath}`);
+      if (!res.ok) throw new Error(`Telegram file download failed: ${res.status} ${res.statusText}`);
+      return Buffer.from(await res.arrayBuffer());
     },
   };
 }

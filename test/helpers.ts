@@ -1,6 +1,9 @@
-// v0.2 test harness: boots the REAL manager app (real memory/git/sqlite, real loop, real poller)
-// wired to fakes at the three external boundaries — Anthropic (scripted model), Codex (in-process
-// runner), Telegram (fake HTTP server). Nothing is deployed.
+// v0.3 test harness: boots the REAL manager app (real memory/git/sqlite, real loop, real poller,
+// real Lila MCP tool handlers, real orchestrator over an in-process fake Codex runner) wired to a
+// fake manager backend at the model boundary. The fake backend lets each scripted turn act directly
+// against memory + the orchestrator (via the real MCP tool handlers) and reply to the owner — so the
+// whole runtime is exercised with everything real except the manager's Codex thread. Nothing is
+// deployed.
 
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +17,7 @@ import { clipSummarizer } from "../src/workers/summarize.js";
 
 import { startFakeTelegram, type FakeTelegram } from "./fakes/fakeTelegram.js";
 import { makeFakeCodex, type FakeCodex } from "./fakes/fakeCodex.js";
-import { makeFakeAnthropic, type FakeAnthropic, type ScriptStep } from "./fakes/fakeAnthropic.js";
+import { makeFakeManager, type FakeManager, type ManagerStep } from "./fakes/fakeManager.js";
 
 export const ALLOWED_USER_ID = 11111111;
 
@@ -25,7 +28,6 @@ export function buildConfig(overrides: Record<string, string> = {}): Config {
   const env: NodeJS.ProcessEnv = {
     TELEGRAM_BOT_TOKEN: "test-token",
     ALLOWED_USER_IDS: String(ALLOWED_USER_ID),
-    ANTHROPIC_API_KEY: "sk-ant-test",
     WORKSPACE_DIR: workspace,
     MEMORY_DIR: join(dir, "memory"),
     MANAGER_STATE_DIR: join(dir, "state"),
@@ -39,7 +41,7 @@ export interface TestBot {
   config: Config;
   app: ManagerApp;
   telegram: FakeTelegram;
-  anthropic: FakeAnthropic;
+  manager: FakeManager;
   codex: FakeCodex;
   /** Inject an inbound update the poller will pull and ingest (the long-poll seam). */
   sendUpdate(update: TelegramUpdate): void;
@@ -47,8 +49,8 @@ export interface TestBot {
 }
 
 export interface StartBotOptions {
-  script?: ScriptStep[];
-  anthropic?: FakeAnthropic;
+  script?: ManagerStep[];
+  manager?: FakeManager;
   codex?: FakeCodex;
   config?: Config;
   configOverrides?: Record<string, string>;
@@ -59,24 +61,24 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
   const config = opts.config ?? buildConfig({ TELEGRAM_API_BASE_URL: telegram.baseUrl, ...opts.configOverrides });
   const client = createTelegramClient({ baseUrl: config.telegramApiBaseUrl, token: config.telegramBotToken });
 
-  const anthropic = opts.anthropic ?? makeFakeAnthropic(opts.script ?? []);
+  const manager = opts.manager ?? makeFakeManager(opts.script ?? []);
   const codex = opts.codex ?? makeFakeCodex();
 
-  const app = createManagerApp({
+  const app = await createManagerApp({
     config,
-    model: anthropic,
     runner: codex,
     deliver: async (chatId, text) => {
       await client.sendMessage(chatId, text);
     },
     summarize: clipSummarizer(),
+    backendFactory: manager.factory,
   });
   app.restore();
   app.start();
 
   const poller: Poller = startPoller({
     getUpdates: (opts) => client.getUpdates(opts),
-    onUpdate: (update) => app.ingestTelegramUpdate(update),
+    onUpdate: (update) => void app.ingestTelegramUpdate(update),
     timeoutSeconds: 1, // short so idle polls turn over quickly; pushUpdate wakes them instantly
   });
 
@@ -84,7 +86,7 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
     config,
     app,
     telegram,
-    anthropic,
+    manager,
     codex,
     sendUpdate: (update) => telegram.pushUpdate(update),
     close: async () => {

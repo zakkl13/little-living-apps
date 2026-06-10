@@ -2,11 +2,14 @@
 // snapshot, start the loop, and long-poll Telegram for updates. Designed to run under systemd so it
 // auto-restarts on crash/reboot; the snapshot + persistent memory make a cold restart lossless.
 
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { loadConfig, ConfigError } from "./config.js";
 import { createTelegramClient } from "./transport/telegram.js";
 import { startPoller } from "./transport/poller.js";
 import { createCodexRunner } from "./workers/runner.js";
-import { createAnthropicModel } from "./manager/anthropic.js";
 import { createManagerApp } from "./app.js";
 import { startInspector, type InspectorServer } from "./inspector/server.js";
 import { openAppFiles } from "./inspector/appfiles.js";
@@ -29,18 +32,27 @@ async function main(): Promise<void> {
     token: config.telegramBotToken,
   });
   const runner = createCodexRunner(config);
-  const model = createAnthropicModel({
-    apiKey: config.anthropicApiKey,
-    ...(config.anthropicBaseUrl ? { baseUrl: config.anthropicBaseUrl } : {}),
-  });
 
-  const app = createManagerApp({
+  // Owner-sent photos (view_image is on): resolve the file id, download it to a temp path, and hand
+  // that path to the manager as a local_image input.
+  const photoDir = mkdtempSync(join(tmpdir(), "lila-photos-"));
+  const downloadPhoto = async (fileId: string): Promise<string | undefined> => {
+    const { file_path } = await telegram.getFile(fileId);
+    if (!file_path) return undefined;
+    const bytes = await telegram.downloadFile(file_path);
+    const ext = file_path.includes(".") ? file_path.slice(file_path.lastIndexOf(".")) : ".jpg";
+    const dest = join(photoDir, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    writeFileSync(dest, bytes);
+    return dest;
+  };
+
+  const app = await createManagerApp({
     config,
-    model,
     runner,
     deliver: async (chatId, text) => {
       await telegram.sendMessage(chatId, text);
     },
+    downloadPhoto,
   });
 
   // Boot probe: surface Codex auth problems loudly rather than failing silently (DESIGN §10).
@@ -62,11 +74,11 @@ async function main(): Promise<void> {
     inspector = startInspector({
       port: config.inspectorPort,
       ...(config.inspectorToken ? { token: config.inspectorToken } : {}),
-      managerModel: config.managerModel,
+      managerModel: config.managerModel ?? "(codex default)",
       workspaceDir: config.workspaceDir,
       appPublicUrl: config.appPublicUrl,
       telemetry: app.telemetry,
-      transcript: () => app.transcript.snapshot(),
+      conversation: () => app.telemetry.conversation(),
       memories: () => app.mem.listAll(),
       workers: () => app.orchestrator.registry.snapshot(),
       appFiles: openAppFiles(config.workspaceDir),
@@ -79,7 +91,7 @@ async function main(): Promise<void> {
   );
   const poller = startPoller({
     getUpdates: (opts) => telegram.getUpdates(opts),
-    onUpdate: (update) => app.ingestTelegramUpdate(update),
+    onUpdate: (update) => void app.ingestTelegramUpdate(update),
   });
 
   const shutdown = async (sig: string): Promise<void> => {
@@ -92,10 +104,11 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
-  logger.info("little-living-apps (v0.2 manager) ready", {
+  logger.info("little-living-apps (v0.3 Codex manager) ready", {
     sandbox: config.sandboxMode,
     workspace: config.workspaceDir,
     memory: config.memoryDir,
+    managerModel: config.managerModel ?? "(codex default)",
     allowed: config.allowedUserIds.length,
   });
 }

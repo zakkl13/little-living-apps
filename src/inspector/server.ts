@@ -9,7 +9,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import type { ModelMessage } from "../manager/anthropic.js";
+import type { ConvMessage } from "../manager/driver.js";
 import type { WorkerSnapshot } from "../workers/registry.js";
 import type { Telemetry } from "../runtime/telemetry.js";
 import type { AppFiles } from "./appfiles.js";
@@ -24,8 +24,8 @@ export interface InspectorDeps {
   workspaceDir: string;
   appPublicUrl: string;
   telemetry: Telemetry;
-  /** Live transcript copy (manager.ts Transcript.snapshot). */
-  transcript: () => ModelMessage[];
+  /** Reconstructed conversation log (Telemetry.conversation), from the Codex item stream. */
+  conversation: () => ConvMessage[];
   /** All memory files on disk (MemFs.listAll). */
   memories: () => Array<{ path: string; body: string }>;
   /** Worker registry projection (WorkerOrchestrator.registry.snapshot). */
@@ -91,7 +91,7 @@ function handle(req: IncomingMessage, res: ServerResponse, deps: InspectorDeps):
     if (path === "/") return sendHtml(res, INSPECTOR_HTML);
     if (path === "/api/overview") return sendJson(res, overview(deps));
     if (path === "/api/conversation") return sendJson(res, conversation(deps));
-    if (path === "/api/cost") return sendJson(res, cost(deps));
+    if (path === "/api/usage") return sendJson(res, usage(deps));
     if (path === "/api/workers") return sendJson(res, workersView(deps));
     if (path === "/api/memories") return sendJson(res, { files: deps.memories() });
     if (path === "/api/trace") return sendJson(res, trace(deps, url.searchParams.get("turn")));
@@ -109,15 +109,13 @@ function handle(req: IncomingMessage, res: ServerResponse, deps: InspectorDeps):
 // ---- views -----------------------------------------------------------------
 
 function overview(deps: InspectorDeps): unknown {
-  const m = deps.telemetry.meter();
   const turns = deps.telemetry.turns();
   return {
     managerModel: deps.managerModel,
     workspaceDir: deps.workspaceDir,
     appPublicUrl: deps.appPublicUrl || null,
     contextTokens: deps.telemetry.contextTokens(),
-    cost: m,
-    price: { inPerMTok: deps.telemetry.priceInPerMTok, outPerMTok: deps.telemetry.priceOutPerMTok },
+    usage: deps.telemetry.meter(),
     counts: {
       turns: turns.length,
       workers: deps.workers().length,
@@ -128,21 +126,20 @@ function overview(deps: InspectorDeps): unknown {
 }
 
 function conversation(deps: InspectorDeps): unknown {
-  const messages = deps.transcript();
+  const messages = deps.conversation();
   return {
     contextTokens: deps.telemetry.contextTokens(),
     messageCount: messages.length,
-    // Sent verbatim: text / thinking / tool_use / tool_result / compaction blocks. The client renders
-    // by block.type, so the manager's reasoning + tool I/O are all visible (requirement 1).
+    // Reconstructed from the Codex item stream: text (agent_message), thinking (reasoning), and
+    // tool_use/tool_result (mcp_tool_call) blocks. The client renders by block.type.
     messages,
   };
 }
 
-function cost(deps: InspectorDeps): unknown {
+function usage(deps: InspectorDeps): unknown {
   return {
     meter: deps.telemetry.meter(),
-    price: { inPerMTok: deps.telemetry.priceInPerMTok, outPerMTok: deps.telemetry.priceOutPerMTok },
-    note: "Codex workers run on the ChatGPT subscription — no metered $; codexTurns is a count only.",
+    note: "Everything rides the ChatGPT subscription — no metered $. These are token counts only.",
     turns: deps.telemetry.turns(),
   };
 }

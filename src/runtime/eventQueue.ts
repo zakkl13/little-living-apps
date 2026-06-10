@@ -17,6 +17,8 @@ export interface OwnerMessageEvent {
   id: string;
   chatId: number;
   text: string;
+  /** Local path to an owner-sent image (view_image is on); opens the turn as a local_image input. */
+  imagePath?: string;
 }
 export interface WorkerEvent {
   kind: "worker_event";

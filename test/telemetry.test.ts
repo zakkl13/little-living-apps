@@ -1,19 +1,18 @@
-// Telemetry recorder (Inspector backend): per-turn token capture, cost arithmetic, the worker-prompt
-// log with turn stamping, ring-buffer eviction, and the durable cost snapshot round-trip.
+// Telemetry recorder (Inspector backend): per-turn token capture (input / cached / output /
+// reasoning), the worker-prompt log with turn stamping, ring-buffer eviction, and the durable usage
+// snapshot round-trip. No dollars — everything rides the subscription, so we track token counts only.
 
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import { createTelemetry } from "../src/runtime/telemetry.js";
 
-const opts = { priceInPerMTok: 15, priceOutPerMTok: 75 };
-
 describe("telemetry", () => {
-  it("accumulates per-turn usage and computes cost from the price table", () => {
-    const t = createTelemetry(opts);
+  it("accumulates per-turn token usage across all four counters", () => {
+    const t = createTelemetry();
     t.beginTurn(1, "owner_message", "build a thing", 7);
-    t.recordUsage(1, { inputTokens: 1_000_000, outputTokens: 200_000 });
-    t.recordUsage(1, { inputTokens: 500_000, outputTokens: 100_000 });
+    t.recordUsage(1, { inputTokens: 1_000_000, outputTokens: 200_000, cachedInputTokens: 800_000, reasoningTokens: 50_000 });
+    t.recordUsage(1, { inputTokens: 500_000, outputTokens: 100_000, cachedInputTokens: 400_000, reasoningTokens: 25_000 });
     t.endTurn(1);
 
     const [turn] = t.turns();
@@ -21,20 +20,32 @@ describe("telemetry", () => {
     assert.equal(turn!.iterations, 2);
     assert.equal(turn!.inputTokens, 1_500_000);
     assert.equal(turn!.outputTokens, 300_000);
-    // 1.5 Mtok * $15 + 0.3 Mtok * $75 = 22.5 + 22.5
-    assert.equal(turn!.costUsd, 45);
+    assert.equal(turn!.cachedInputTokens, 1_200_000);
+    assert.equal(turn!.reasoningTokens, 75_000);
     assert.ok(turn!.endedAt && turn!.endedAt >= turn!.startedAt);
 
     const m = t.meter();
     assert.equal(m.inputTokens, 1_500_000);
-    assert.equal(m.costUsd, 45);
+    assert.equal(m.cachedInputTokens, 1_200_000);
+    assert.equal(m.outputTokens, 300_000);
+    assert.equal(m.reasoningTokens, 75_000);
     assert.equal(m.managerTurns, 1);
     // contextTokens = the most recent call's input size, not the sum.
     assert.equal(t.contextTokens(), 500_000);
   });
 
+  it("treats cached/reasoning as optional in a partial usage", () => {
+    const t = createTelemetry();
+    t.beginTurn(1, "owner_message", "x", 1);
+    t.recordUsage(1, { inputTokens: 100, outputTokens: 20 });
+    const m = t.meter();
+    assert.equal(m.inputTokens, 100);
+    assert.equal(m.cachedInputTokens, 0);
+    assert.equal(m.reasoningTokens, 0);
+  });
+
   it("logs worker prompts stamped with the originating turn and counts codex turns", () => {
-    const t = createTelemetry(opts);
+    const t = createTelemetry();
     t.recordPrompt({ turnId: 4, workerId: "w1", kind: "start", prompt: "scope: src/api/**" });
     t.recordPrompt({ turnId: 4, workerId: "w2", kind: "start", prompt: "scope: test/**" });
     t.recordPrompt({ turnId: 9, workerId: "w1", kind: "steer", prompt: "redirect" });
@@ -48,26 +59,27 @@ describe("telemetry", () => {
   });
 
   it("evicts the oldest turns past the ring cap", () => {
-    const t = createTelemetry({ ...opts, maxTurns: 2 });
+    const t = createTelemetry({ maxTurns: 2 });
     for (const id of [1, 2, 3]) t.beginTurn(id, "owner_message", `r${id}`, 1);
     const ids = t.turns().map((x) => x.turnId);
     assert.deepEqual(ids, [2, 3], "turn 1 evicted; meter total still counts all 3");
     assert.equal(t.meter().managerTurns, 3);
   });
 
-  it("round-trips the cost snapshot across a restart", () => {
-    const t = createTelemetry(opts);
+  it("round-trips the usage snapshot across a restart", () => {
+    const t = createTelemetry();
     t.beginTurn(1, "owner_message", "x", 1);
-    t.recordUsage(1, { inputTokens: 2_000_000, outputTokens: 0 });
+    t.recordUsage(1, { inputTokens: 2_000_000, outputTokens: 0, cachedInputTokens: 1_900_000, reasoningTokens: 10 });
     t.recordPrompt({ turnId: 1, workerId: "w1", kind: "start", prompt: "go" });
 
-    const snap = t.costSnapshot();
-    const restored = createTelemetry(opts);
-    restored.loadCost(snap);
+    const snap = t.usageSnapshot();
+    const restored = createTelemetry();
+    restored.loadUsage(snap);
 
     const m = restored.meter();
     assert.equal(m.inputTokens, 2_000_000);
-    assert.equal(m.costUsd, 30); // 2 Mtok * $15
+    assert.equal(m.cachedInputTokens, 1_900_000);
+    assert.equal(m.reasoningTokens, 10);
     assert.equal(m.managerTurns, 1);
     assert.equal(m.codexTurns, 1);
   });

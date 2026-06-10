@@ -40,13 +40,15 @@ export interface CodexRunner {
 
 const NO_OUTPUT = "(Codex produced no output.)";
 
-/** Build the env handed to the Codex CLI: inherit everything except billing-flip keys. */
-function sanitizedEnv(): Record<string, string> {
+/** Build the env handed to the Codex CLI: inherit everything except billing-flip keys, then layer
+ *  on any extras (the manager passes LILA_MCP_TOKEN this way). Shared by the worker runner and the
+ *  manager thread factory so both strip the keys identically. */
+export function sanitizedEnv(extra: Record<string, string> = {}): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v !== undefined && k !== "OPENAI_API_KEY" && k !== "CODEX_API_KEY") env[k] = v;
   }
-  return env;
+  return { ...env, ...extra };
 }
 
 /** Render a non-message thread item as a short live-progress line (or skip it). */

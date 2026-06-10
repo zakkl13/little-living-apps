@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { startBot, messageUpdate, type TestBot } from "./helpers.js";
-import { resp, text, toolUse } from "./fakes/fakeAnthropic.js";
+import { say, startWorkers } from "./fakes/fakeManager.js";
 import { startInspector, type InspectorServer } from "../src/inspector/server.js";
 import { openAppFiles } from "../src/inspector/appfiles.js";
 
@@ -25,12 +25,10 @@ afterEach(async () => {
 async function bootWithWorker(): Promise<TestBot> {
   const bot = await startBot({
     script: [
-      // Turn 1: spawn a scoped worker, then ack as plain text (ends the turn).
-      resp([toolUse("subagent_start", { objective: "work only within src/api/**", project: "proj" })]),
-      resp([text("on it — spun up a worker for the API")]),
+      // Turn 1: spawn a scoped worker, then ack.
+      startWorkers([{ objective: "work only within src/api/**", project: "proj" }], "on it — spun up a worker for the API"),
       // Turn 2: worker completion event → narrate.
-      resp([text("✅ API worker done")]),
-      resp([]), // safety buffer
+      say("✅ API worker done"),
     ],
   });
   bots.push(bot);
@@ -45,11 +43,11 @@ function inspectorFor(bot: TestBot): InspectorServer {
   const server = startInspector({
     port: 0,
     token: TOKEN,
-    managerModel: bot.config.managerModel,
+    managerModel: bot.config.managerModel ?? "(codex default)",
     workspaceDir: bot.config.workspaceDir,
     appPublicUrl: bot.config.appPublicUrl,
     telemetry: bot.app.telemetry,
-    transcript: () => bot.app.transcript.snapshot(),
+    conversation: () => bot.app.telemetry.conversation(),
     memories: () => bot.app.mem.listAll(),
     workers: () => bot.app.orchestrator.registry.snapshot(),
     appFiles: openAppFiles(bot.config.workspaceDir),
@@ -77,21 +75,24 @@ describe("inspector (read-only observability plane)", () => {
       return res.json();
     };
 
-    // Overview: cost meter + counts populated by the real turns that ran.
+    // Overview: token-usage meter + counts populated by the real turns that ran.
     const overview = await get("/api/overview");
     assert.ok(overview.counts.turns >= 1);
     assert.equal(overview.counts.workers, 1);
     assert.ok(overview.contextTokens > 0, "context tokens captured from model usage");
-    assert.ok(overview.cost.managerTurns >= 2);
-    assert.ok(overview.cost.costUsd > 0);
+    assert.ok(overview.usage.managerTurns >= 2);
+    assert.ok(overview.usage.inputTokens > 0, "input tokens accumulated");
+    assert.ok(overview.usage.outputTokens > 0, "output tokens accumulated");
+    assert.equal(typeof overview.usage.cachedInputTokens, "number");
+    assert.equal(typeof overview.usage.reasoningTokens, "number");
 
-    // Conversation: the manager's tool_use for subagent_start is visible in the transcript.
+    // Conversation: the manager's tool call for subagent_start is visible in the reconstructed log.
     const convo = await get("/api/conversation");
     assert.ok(convo.messageCount > 0);
     const blocks = convo.messages.flatMap((m: any) => m.content);
     assert.ok(
-      blocks.some((b: any) => b.type === "tool_use" && b.name === "subagent_start"),
-      "subagent_start tool_use present in conversation",
+      blocks.some((b: any) => b.type === "tool_use" && b.name === "lila.subagent_start"),
+      "subagent_start tool call present in conversation",
     );
 
     // Trace: the owner request's turn carries the exact Codex prompt the worker received.
@@ -113,10 +114,11 @@ describe("inspector (read-only observability plane)", () => {
     assert.ok(paths.includes("system/workers.md"), "worker roster mirrored into memory");
     assert.ok(paths.some((p: string) => p.startsWith("system/")), "system memory present");
 
-    // Cost: per-turn series present.
-    const costData = await get("/api/cost");
-    assert.ok(costData.turns.length >= 1);
-    assert.ok(costData.meter.codexTurns >= 1, "one worker launch counted");
+    // Usage: per-turn token series present.
+    const usageData = await get("/api/usage");
+    assert.ok(usageData.turns.length >= 1);
+    assert.ok(usageData.meter.codexTurns >= 1, "one worker launch counted");
+    assert.equal(usageData.meter.costUsd, undefined, "no dollar figure tracked anymore");
   });
 
   it("reads the target app's memory bank, traversal-guarded", async () => {

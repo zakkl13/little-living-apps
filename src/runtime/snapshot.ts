@@ -1,10 +1,13 @@
-// Crash-recovery snapshots (DESIGN §11). Written after every turn (cheap, small) so a hibernate
-// mid-conversation loses nothing. Memory (MEMORY_DIR) is the *semantic* truth; this snapshot is the
-// *mechanical* state: the working transcript (INCLUDING server compaction blocks, which must be
-// preserved verbatim — DESIGN §4/§12), the pending event queue, and the worker registry.
+// Crash-recovery snapshots (MIGRATION-CODEX.md §7). Written after every turn (cheap, small) so a
+// hibernate mid-conversation loses nothing. Memory (MEMORY_DIR) is the *semantic* truth; this
+// snapshot is the *mechanical* state. v3 is a big simplification over v2: Codex owns the manager
+// thread's rollout on disk (CODEX_HOME/sessions) and runs its own compaction, so we no longer
+// snapshot the ModelMessage[] transcript or compaction blocks — only the thread id, to resume it.
 //
-// Atomic write (tmp + fsync + rename) so a crash mid-write can never corrupt the file — the same
-// discipline the v0.1 session store used.
+// Atomic write (tmp + fsync + rename) so a crash mid-write can never corrupt the file.
+//
+// No-compat cutover: only v3 is read. The first start after the Opus→Codex deploy finds the old v2
+// file, ignores it, and begins a fresh manager thread seeded by persisted memory (§7 cutover note).
 
 import {
   closeSync,
@@ -18,19 +21,19 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-import type { ModelMessage } from "../manager/anthropic.js";
 import type { ManagerEvent } from "./eventQueue.js";
 import type { WorkerSnapshot } from "../workers/registry.js";
-import type { CostSnapshot } from "./telemetry.js";
+import type { UsageSnapshot } from "./telemetry.js";
 import { logger } from "../logger.js";
 
 export interface ManagerSnapshot {
-  version: 2;
-  transcript: ModelMessage[];
+  version: 3;
+  /** The Codex manager thread to resume on cold wake; absent before the first turn / after /new. */
+  managerThreadId?: string;
   queue: ManagerEvent[];
   workers: WorkerSnapshot[];
-  /** Cumulative Inspector cost meter; absent in v1 snapshots and when the Inspector is off. */
-  cost?: CostSnapshot;
+  /** Cumulative token-usage meter (lifetime totals survive a restart). */
+  usage?: UsageSnapshot;
 }
 
 export interface SnapshotStore {
@@ -58,29 +61,26 @@ export function openSnapshotStore(dir: string): SnapshotStore {
       try {
         const parsed = JSON.parse(readFileSync(path, "utf8")) as {
           version?: number;
-          transcript?: ModelMessage[];
+          managerThreadId?: string;
           queue?: ManagerEvent[];
           workers?: WorkerSnapshot[];
-          cost?: CostSnapshot;
+          usage?: UsageSnapshot;
         };
-        // We are the only writer; every version carries all three arrays. A missing field means the
-        // file is corrupt/truncated, so ignore it rather than papering over it. v1 snapshots (no
-        // cost field) load fine — cost just starts from zero, which is correct.
-        if (
-          (parsed.version === 1 || parsed.version === 2) &&
-          Array.isArray(parsed.transcript) &&
-          Array.isArray(parsed.queue) &&
-          Array.isArray(parsed.workers)
-        ) {
+        // We are the only writer; a v3 file carries both arrays. A missing field means it is
+        // corrupt/truncated, so ignore it. A pre-v3 (Opus) file is discarded — a fresh thread starts.
+        if (parsed.version === 3 && Array.isArray(parsed.queue) && Array.isArray(parsed.workers)) {
           return {
-            version: 2,
-            transcript: parsed.transcript as ModelMessage[],
+            version: 3,
+            ...(parsed.managerThreadId ? { managerThreadId: parsed.managerThreadId } : {}),
             queue: parsed.queue as ManagerEvent[],
             workers: parsed.workers as WorkerSnapshot[],
-            ...(parsed.cost ? { cost: parsed.cost } : {}),
+            ...(parsed.usage ? { usage: parsed.usage } : {}),
           };
         }
-        logger.warn("Snapshot had unexpected shape; ignoring", { path });
+        logger.warn("Snapshot was missing/old version; ignoring (fresh manager thread)", {
+          path,
+          version: parsed.version,
+        });
       } catch (err) {
         logger.warn("Failed to parse snapshot; starting fresh", { path, error: (err as Error).message });
       }

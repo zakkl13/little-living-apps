@@ -1,36 +1,39 @@
 # little-living-apps
 
-Build useful, stateful little apps you never have to read the code for. You talk to a **Claude
+Build useful, stateful little apps you never have to read the code for. You talk to a **Codex
 manager** over Telegram; it orchestrates headless **OpenAI Codex** workers that build and maintain
 **one app** on a Linux host you control. The manager plans, remembers, and delegates; the workers do
 the concrete work in the app's repo. "Living" = the agent team keeps maintaining it, not a one-shot
 generator.
 
-Two billing planes: Anthropic (metered — the manager's brain) and your **ChatGPT subscription**
-(the Codex workers — **no OpenAI API key**, by design).
+**One billing plane.** As of v0.3 the manager is itself a long-lived Codex thread, so *manager and
+workers both ride your single **ChatGPT subscription*** — **no OpenAI API key, no metered plane.**
+The cost story collapses to "the subscription."
 
-> **Bring your own everything.** This is an open pattern, not a service: your host, your API keys,
-> your Telegram bot. Not a money-making endeavor — adopt it, fork it, run it on a box you own.
+> **Bring your own everything.** This is an open pattern, not a service: your host, your Telegram
+> bot, your ChatGPT login. Not a money-making endeavor — adopt it, fork it, run it on a box you own.
 
 ```
  Telegram ──long-poll (outbound)──▶ EVENT QUEUE ──▶ manager turn (SERIALIZED)
-  (owner)   getUpdates              owner_msg | worker_event      │
-        ▲                                                         │ Anthropic Messages (Opus)
-        │ reply text                                              │ tool loop
-        │                    ┌── tools (the only hands) ──────────┘
-        │                    │  memory  → MemFS (git markdown + sqlite FTS)
+  (owner)   getUpdates              owner_msg | worker_event      │  Codex thread (one, long-lived)
+        ▲                                                         │  read-only sandbox, no shell/net
+        │ reply text (agent_message)                              │  reasoning = xhigh
+        │                    ┌── Lila MCP tools (the only hands) ──┘  (loopback HTTP, bearer token)
+        │                    │  memory_*  → MemFS (git markdown + sqlite FTS)
         │                    │  subagent_* → Codex workers (async, parallel, scoped)
-        └────────────────────┤  the manager's plain text IS the reply (NO_REPLY = stay silent)
+        └────────────────────┤  an ordinary message IS the reply (NO_REPLY = stay silent)
                              └── workers operate the box: build & maintain the app at $WORKSPACE_DIR
 ```
 
 The bot talks to Telegram by **outbound long-poll** — it opens no inbound port and needs no public
 URL or TLS, so it runs behind NAT, on a home box, or on a bare cloud VM. The manager has **no
-shell/file/network tools**; that boundary is enforced by its tool surface (only `memory`,
-`subagent_*`, `memory_search`/`recall_search`). Its plain assistant text is delivered straight to
-Telegram; `NO_REPLY` lets it absorb an event silently (Hermes / Letta-v1 style). Workers have full
-access under standing rules (`provision/AGENTS.md`). Everything survives a restart via per-turn
-snapshots + a git-backed memory repo.
+shell/file/network tools**: it runs in a **read-only sandbox with `shell_tool` and `web_search`
+off**, so its only hands are the **Lila MCP** tools (`memory_*`, `subagent_*`,
+`memory_search`/`recall_search`) served in-process over loopback HTTP. `view_image` stays on, so it
+can see owner-sent screenshots. Its plain agent message is delivered straight to Telegram; `NO_REPLY`
+lets it absorb an event silently. Workers have full access under standing rules
+(`provision/AGENTS.md`). Everything survives a restart: Codex owns the manager thread's rollout on
+disk, and per-turn snapshots + a git-backed memory repo carry the rest.
 
 ## Security model — read this first
 
@@ -43,13 +46,14 @@ snapshots + a git-backed memory repo.
 - **The app is private until you publish it.** Long-poll means nothing about the box is reachable
   from outside unless you deliberately expose the app the agent builds.
 - **Never set `OPENAI_API_KEY` / `CODEX_API_KEY`.** Either flips Codex to metered API billing
-  instead of the ChatGPT subscription. The bot (and `bootstrap.sh`) refuse to start if either is set.
+  instead of the ChatGPT subscription. Now that the manager rides the subscription too, this is the
+  *only* billing protection left — the bot (and `bootstrap.sh`) refuse to start if either is set.
 
 ## Quickstart (fresh Ubuntu 22.04+/Debian 12 host)
 
 ```bash
 git clone <this repo> && cd little-living-apps
-cp .env.example .env && $EDITOR .env     # TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS, ANTHROPIC_API_KEY
+cp .env.example .env && $EDITOR .env     # TELEGRAM_BOT_TOKEN, ALLOWED_USER_IDS (no API key needed)
 sudo bash bootstrap.sh                    # mise -> Ruby+Node, Codex CLI, build, data dirs, systemd
 # then, one-time, authenticate Codex on the ChatGPT subscription:
 sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex ~/.local/bin/mise exec -- codex login --device-auth
@@ -58,7 +62,7 @@ journalctl -u lila-manager -f            # watch it
 ```
 
 Then message your bot. The manager delegates to workers and reports back; `/status` shows workers +
-state; `/new` clears the working transcript (long-term memory is kept). `bootstrap.sh` is idempotent
+state; `/new` starts a fresh manager thread (long-term memory is kept). `bootstrap.sh` is idempotent
 — re-run it after pulling changes (then `sudo systemctl restart lila-manager`).
 
 **The app.** Ask the bot to build something and a worker scaffolds the app with `lila-new-app` — a
@@ -75,13 +79,13 @@ with `deploy/Caddyfile`.
 | `bin/new-app` | Thin scaffolder for the app: minimal Rails 8 + PWA (+ built-in auth), installs+starts its service. Run via `lila-new-app`. |
 | `deploy/` | `lila-manager.service`, `lila-app.service` (unit templates), `Caddyfile` (publish the app behind your domain). |
 | `.mise.toml` | Pinned Ruby + Node versions. |
-| `src/config.ts` | Env loading + validation; requires `ANTHROPIC_API_KEY`; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard). |
-| `src/app.ts` | Composition root: wires memory + orchestrator + tool registry + loop + snapshots; `ingestTelegramUpdate`, `persist`/`restore`. |
-| `src/manager/anthropic.ts` | `ManagerModel` seam + real `@anthropic-ai/sdk` wrapper (compaction + context-editing betas; compaction blocks round-trip verbatim). |
-| `src/manager/manager.ts` | One serialized manager turn: event → tool loop → deliver. |
-| `src/manager/prompt.ts` · `tools/` | System prompt (persona + rules + core memory + host facts) and the tool registry (memory, orchestration). |
-| `src/memory/` | `memfs.ts` (`memory_20250818` backend over `/memories`), `fts.ts` (sqlite FTS5), `git.ts` (commit-per-write), `block.ts`. |
-| `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (cold-restart recovery). |
+| `src/config.ts` | Env loading + validation; no API key required; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard — the only billing protection left). |
+| `src/app.ts` | Composition root: wires memory + orchestrator + manager backend + loop + snapshots; `ingestTelegramUpdate` (incl. photo intake), `persist`/`restore`. |
+| `src/manager/managerCodex.ts` · `driver.ts` | The locked-down Codex thread factory (the model seam) + the `ManagerDriver` that turns one event into one streamed turn (deliver `agent_message`, honor `NO_REPLY`, record usage). |
+| `src/manager/backend.ts` · `mcp/` | Assembles AGENTS.md + the Lila MCP server + the driver. `mcp/tools.ts` is the manager's entire capability (memory + subagent tools); `mcp/server.ts` is the loopback bearer-guarded streamable-HTTP server. |
+| `src/manager/prompt.ts` | Splits the instructions: static persona/rules/host-facts/tools → `AGENTS.md`; volatile core memory + index → the per-turn context header. |
+| `src/memory/` | `memfs.ts` (markdown backend over `/memories`), `fts.ts` (sqlite FTS5), `git.ts` (commit-per-write), `block.ts`. |
+| `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (v3: thread id + queue + workers), `telemetry.ts`. |
 | `src/workers/` | `runner.ts` (`CodexRunner` over `@openai/codex-sdk`), `orchestrator.ts` (async `subagent_*`; steer = abort+resume), `registry.ts`, `summarize.ts`. |
 | `src/transport/` | `telegram.ts` (chunked Bot API client + `getUpdates`), `poller.ts` (outbound long-poll). |
 | `provision/` | `AGENTS.md` (worker standing rules), `memory-bank/` templates (seeded into the app repo). |
@@ -92,19 +96,23 @@ with `deploy/Caddyfile`.
 Every external boundary is injectable, so the **real** runtime loop runs against fakes while memory
 runs for real:
 
-- **Anthropic** → `test/fakes/fakeAnthropic.ts`, a scripted `ManagerModel` returning predetermined
-  `tool_use` / text / `compaction` blocks. Records every request (asserts the compaction round-trip).
+- **Manager backend** → `test/fakes/fakeManager.ts`, a scripted backend whose each "turn" acts
+  directly against the **real** Lila MCP tool handlers (memory + orchestrator) and replies to the
+  owner — so the whole runtime runs with everything real except the Codex thread itself. The real
+  `ManagerDriver` is exercised separately in `test/driver.test.ts` against a scripted `ThreadEvent`
+  stream (delivery, `NO_REPLY`, usage, context header, `local_image`, resume/reset, failure).
 - **Codex** → `test/fakes/fakeCodex.ts`, an in-process `CodexRunner` (async runs, `AbortSignal`,
   early thread-id, `WORKER_FAIL`/`WAIT_FOR_ABORT`/`LONG_OUTPUT` sentinels).
 - **Telegram** → `test/fakes/fakeTelegram.ts`, an in-process HTTP server: records sends/edits and
   serves `getUpdates` as a real long-poll (tests inject inbound updates via `pushUpdate`).
-- **Memory** → the **real** `node:sqlite` FTS + a **real** tmp git repo (high-fidelity).
+- **Memory + MCP** → the **real** `node:sqlite` FTS + a **real** tmp git repo; `test/mcp.test.ts`
+  also boots the real Lila MCP HTTP server and asserts bearer-token gating + the MCP handshake.
 
 `test/e2e.test.ts` is the headline: owner message → manager turn → `subagent_start` ×2 (parallel,
-prompt-scoped) → workers complete → `worker_event`s → manager narrates as plain text → Telegram; it
-asserts memory-tool writes land in MemFS, compaction blocks round-trip, and a simulated **cold
-restart** restores memory + transcript losslessly. Subsystem suites cover memory, the manager loop,
-workers, durability, config, and the long-poll transport.
+prompt-scoped) → workers complete → `worker_event`s → manager records a decision in memory and
+narrates → Telegram; it asserts memory writes land in MemFS, the worker prompts carried their scopes,
+the manager thread id is snapshotted, and a simulated **cold restart** loses no memory. Subsystem
+suites cover memory, the manager driver, the MCP tools, workers, durability, config, and transport.
 
 ```bash
 npm install
@@ -112,13 +120,15 @@ npm run typecheck
 npm test           # runs with --experimental-sqlite (node:sqlite)
 ```
 
-> The e2e never calls a real model — it validates *our* contracts (loop, memory, compaction
-> round-trip, durability, the poll seam), not Anthropic's beta behavior.
+> The e2e never calls a real model — it validates *our* contracts (the loop, memory, MCP tools,
+> durability, the driver's delivery/`NO_REPLY`/usage handling, the poll seam), not Codex's behavior.
 
 ## Status
 
-Host-native and runnable: the manager runs on a plain VM via long-poll (Phases 1–3), and the
-opinionated app runtime is a minimal **Rails 8 + PWA** scaffold (`lila-new-app`) in reload mode
-(Phase 4). See `MIGRATION.md` for the full plan and what was removed. The runtime is deliberately
-thin — Rails 8 defaults plus PWA, built-in auth, and a reserved `/_agent/*` path — so the agent
-builds *on top* rather than fighting a heavy template.
+Host-native and runnable: the manager runs on a plain VM via long-poll, and the opinionated app
+runtime is a minimal **Rails 8 + PWA** scaffold (`lila-new-app`) in reload mode. **v0.3** cut the
+manager brain off Claude Opus onto a long-lived **Codex thread** — manager and workers now share the
+one ChatGPT subscription, with no metered plane (see `MIGRATION-CODEX.md`). See `MIGRATION.md` for
+the earlier host-native migration. The runtime is deliberately thin — Rails 8 defaults plus PWA,
+built-in auth, and a reserved `/_agent/*` path — so the agent builds *on top* rather than fighting a
+heavy template.

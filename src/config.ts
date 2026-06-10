@@ -10,6 +10,11 @@ export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access"
 
 const SANDBOX_MODES: readonly SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
 
+// The manager thread's reasoning effort (Codex ModelReasoningEffort). xhigh is the target (§4).
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+const REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
+
 export interface Config {
   telegramBotToken: string;
   allowedUserIds: number[];
@@ -24,17 +29,21 @@ export interface Config {
   /** Absolute path to a specific codex binary for the SDK; undefined = SDK default. */
   codexPathOverride?: string;
 
-  // --- v0.2 manager tier (DESIGN §10) ---
-  /** Anthropic API key — the manager's only paid plane. Required in v0.2. */
-  anthropicApiKey: string;
-  /** Manager memory repo, exposed to the memory tool as /memories (git markdown + FTS). */
+  // --- v0.3 manager tier: the manager is a Codex thread (MIGRATION-CODEX.md) ---
+  /** Manager memory repo, exposed to the memory tools as /memories (git markdown + FTS). */
   memoryDir: string;
-  /** Transcript + queue snapshots for cold-wake recovery (DESIGN §11). */
+  /** Thread-id + queue snapshots for cold-wake recovery (MIGRATION-CODEX.md §7). */
   managerStateDir: string;
-  /** Opus-class model driving the manager loop. */
-  managerModel: string;
-  /** Anthropic Messages base URL; overridden in tests to point at a fake (no real API). */
-  anthropicBaseUrl?: string;
+  /** Working directory holding the manager's AGENTS.md (defaults under MANAGER_STATE_DIR). */
+  managerDir: string;
+  /** Strongest Codex model driving the manager thread; undefined → the SDK/CLI default. */
+  managerModel?: string;
+  /** Manager reasoning effort (default xhigh). */
+  managerReasoningEffort: ReasoningEffort;
+  /** Loopback port for the in-process Lila MCP server; undefined → a free port is chosen. */
+  lilaMcpPort?: number;
+  /** Bearer token for the Lila MCP server; undefined → auto-generated per boot. */
+  lilaMcpToken?: string;
 
   // --- Inspector: read-only observability plane (off by default) ---
   /** Stand up the localhost Inspector HTTP server (env INSPECTOR_ENABLED=true). */
@@ -43,9 +52,6 @@ export interface Config {
   inspectorPort: number;
   /** Shared secret required on every Inspector request (defense in depth even on localhost). */
   inspectorToken?: string;
-  /** Nominal $ per million input/output tokens for the manager model (cost estimates only). */
-  inspectorPriceIn: number;
-  inspectorPriceOut: number;
 }
 
 export class ConfigError extends Error {}
@@ -89,7 +95,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
   const telegramBotToken = required(env, "TELEGRAM_BOT_TOKEN");
   const allowedUserIds = parseUserIds(required(env, "ALLOWED_USER_IDS"));
-  const anthropicApiKey = required(env, "ANTHROPIC_API_KEY");
 
   const sandboxRaw = (env.CODEX_SANDBOX_MODE ?? "danger-full-access").trim() as SandboxMode;
   if (!SANDBOX_MODES.includes(sandboxRaw)) {
@@ -98,7 +103,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   }
 
+  const reasoningRaw = (env.MANAGER_REASONING_EFFORT ?? "xhigh").trim() as ReasoningEffort;
+  if (!REASONING_EFFORTS.includes(reasoningRaw)) {
+    throw new ConfigError(
+      `MANAGER_REASONING_EFFORT must be one of ${REASONING_EFFORTS.join(", ")} (got "${reasoningRaw}")`,
+    );
+  }
+
   const codexPathOverride = env.CODEX_BIN?.trim() || undefined;
+  const managerStateDir = env.MANAGER_STATE_DIR?.trim() || "/var/lib/lila/state";
+  const lilaMcpPort = env.LILA_MCP_PORT?.trim() ? numEnv(env.LILA_MCP_PORT, 0) : undefined;
+  const lilaMcpToken = env.LILA_MCP_TOKEN?.trim() || undefined;
+  const managerModel = env.MANAGER_MODEL?.trim() || undefined;
 
   const inspectorEnabled = /^(1|true|yes)$/i.test(env.INSPECTOR_ENABLED?.trim() ?? "");
   const inspectorPort = numEnv(env.INSPECTOR_PORT, 9090);
@@ -116,17 +132,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     ),
     ...(codexPathOverride ? { codexPathOverride } : {}),
 
-    anthropicApiKey,
     memoryDir: env.MEMORY_DIR?.trim() || "/var/lib/lila/memory",
-    managerStateDir: env.MANAGER_STATE_DIR?.trim() || "/var/lib/lila/state",
-    managerModel: env.MANAGER_MODEL?.trim() || "claude-opus-4-8",
-    ...(env.ANTHROPIC_BASE_URL?.trim() ? { anthropicBaseUrl: env.ANTHROPIC_BASE_URL.trim() } : {}),
+    managerStateDir,
+    managerDir: env.MANAGER_DIR?.trim() || `${managerStateDir}/manager`,
+    ...(managerModel ? { managerModel } : {}),
+    managerReasoningEffort: reasoningRaw,
+    ...(lilaMcpPort !== undefined ? { lilaMcpPort } : {}),
+    ...(lilaMcpToken ? { lilaMcpToken } : {}),
 
     inspectorEnabled,
     inspectorPort,
     ...(inspectorToken ? { inspectorToken } : {}),
-    inspectorPriceIn: numEnv(env.INSPECTOR_PRICE_IN, 15),
-    inspectorPriceOut: numEnv(env.INSPECTOR_PRICE_OUT, 75),
   };
 }
 

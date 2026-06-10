@@ -1,6 +1,7 @@
-// Phase 5: durability. Snapshots are written after every turn; a rebuilt app restores transcript
-// (incl. compaction blocks, verbatim), the pending queue, and worker records from the last
-// snapshot — a simulated cold wake loses nothing (DESIGN §11, §4).
+// Durability (MIGRATION-CODEX.md §7). Snapshots are written after every turn; a rebuilt app restores
+// the manager thread id (to resume the Codex rollout), the pending queue, and worker records from the
+// last snapshot — a simulated cold wake loses nothing. v3 drops the ModelMessage transcript: Codex
+// owns the thread's rollout on disk.
 
 import { strict as assert } from "node:assert";
 import { describe, it, afterEach } from "node:test";
@@ -8,7 +9,7 @@ import { describe, it, afterEach } from "node:test";
 import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { openSnapshotStore, type ManagerSnapshot } from "../src/runtime/snapshot.js";
 import { makeFakeCodex } from "./fakes/fakeCodex.js";
-import { makeFakeAnthropic, resp, text, compaction, type FakeAnthropic } from "./fakes/fakeAnthropic.js";
+import { makeFakeManager, say, type FakeManager } from "./fakes/fakeManager.js";
 import { buildConfig, ALLOWED_USER_ID } from "./helpers.js";
 import type { Config } from "../src/config.js";
 
@@ -17,30 +18,30 @@ afterEach(async () => {
   while (apps.length) await apps.pop()!.close();
 });
 
-function buildApp(config: Config, fake: FakeAnthropic): { app: ManagerApp; sent: Array<{ text: string }> } {
+async function buildApp(
+  config: Config,
+  manager: FakeManager,
+): Promise<{ app: ManagerApp; sent: Array<{ text: string }> }> {
   const sent: Array<{ text: string }> = [];
-  const app = createManagerApp({
+  const app = await createManagerApp({
     config,
-    model: fake,
     runner: makeFakeCodex(),
     deliver: async (_chatId, t) => {
       sent.push({ text: t });
     },
+    backendFactory: manager.factory,
   });
   apps.push(app);
   return { app, sent };
 }
 
 describe("snapshot store", () => {
-  it("round-trips a snapshot including compaction blocks", () => {
+  it("round-trips a v3 snapshot (thread id + queue + workers)", () => {
     const config = buildConfig();
     const store = openSnapshotStore(config.managerStateDir);
     const snap: ManagerSnapshot = {
-      version: 2,
-      transcript: [
-        { role: "user", content: [{ type: "text", text: "hi" }] },
-        { role: "assistant", content: [{ type: "compaction", id: "cmp_1" }, { type: "text", text: "ok" }] },
-      ],
+      version: 3,
+      managerThreadId: "thread-xyz",
       queue: [{ kind: "owner_message", id: "evt_1", chatId: 7, text: "pending" }],
       workers: [{ id: "w1", purpose: "p", project: "/w", status: "idle", threadId: "thread-1" }],
     };
@@ -52,54 +53,61 @@ describe("snapshot store", () => {
     const config = buildConfig();
     assert.equal(openSnapshotStore(config.managerStateDir).load(), undefined);
   });
+
+  it("ignores a pre-v3 (Opus) snapshot so a fresh thread starts", () => {
+    const config = buildConfig();
+    const store = openSnapshotStore(config.managerStateDir);
+    // Hand-write a v2 file the way the old runtime would have.
+    openSnapshotStore(config.managerStateDir).save({
+      // deliberately the old shape
+      version: 2 as unknown as 3,
+      queue: [],
+      workers: [],
+    } as ManagerSnapshot);
+    assert.equal(store.load(), undefined, "old snapshot discarded");
+  });
 });
 
-describe("cold-wake recovery (DESIGN §11)", () => {
-  it("persists after each turn and restores transcript with compaction blocks verbatim", async () => {
+describe("cold-wake recovery (MIGRATION-CODEX.md §7)", () => {
+  it("persists after each turn and restores the manager thread id", async () => {
     const config = buildConfig();
 
-    // --- app instance #1: one turn that produces a compaction block, then dies ---
-    const fake1 = makeFakeAnthropic([resp([compaction("cmp_LIVE"), text("ack")])]);
-    const { app: app1, sent: sent1 } = buildApp(config, fake1);
+    // --- app instance #1: one turn, then die ---
+    const { app: app1, sent: sent1 } = await buildApp(config, makeFakeManager([say("ack")]));
     app1.start();
     app1.enqueueOwner(ALLOWED_USER_ID, "first message");
     await app1.loop.whenIdle();
     assert.deepEqual(sent1.map((m) => m.text), ["ack"]);
     await app1.close();
 
-    // The snapshot on disk carries the compaction block.
     const onDisk = openSnapshotStore(config.managerStateDir).load()!;
-    const compactionOnDisk = onDisk.transcript.flatMap((m) => m.content).find((b) => b.type === "compaction");
-    assert.ok(compactionOnDisk, "compaction block persisted to snapshot");
+    assert.ok(onDisk.managerThreadId, "manager thread id persisted to snapshot");
+    const threadId = onDisk.managerThreadId;
 
-    // --- app instance #2: fresh process, same dirs → restore and continue ---
-    const fake2 = makeFakeAnthropic([resp([text("continued")])]);
-    const { app: app2, sent: sent2 } = buildApp(config, fake2);
+    // --- app instance #2: fresh process, same dirs → restore the thread id and continue ---
+    const { app: app2, sent: sent2 } = await buildApp(config, makeFakeManager([say("continued")]));
     app2.restore();
     app2.start();
     app2.enqueueOwner(ALLOWED_USER_ID, "second message");
     await app2.loop.whenIdle();
 
     assert.deepEqual(sent2.map((m) => m.text), ["continued"]);
-    // The compaction block from instance #1 round-tripped into instance #2's first request.
-    const firstReq = fake2.requests[0]!;
-    const survived = firstReq.messages.flatMap((m) => m.content).find((b) => b.type === "compaction");
-    assert.ok(survived, "compaction block survived the restart");
-    assert.equal((survived as unknown as { id: string }).id, "cmp_LIVE");
+    // The thread id from instance #1 survived the restart (Codex resumes the same rollout).
+    const after = openSnapshotStore(config.managerStateDir).load()!;
+    assert.equal(after.managerThreadId, threadId, "manager thread id preserved across restart");
   });
 
   it("resumes a pending queued event after a restart", async () => {
     const config = buildConfig();
 
     // Enqueue but never drain (loop not started), then persist and die.
-    const { app: app1 } = buildApp(config, makeFakeAnthropic());
+    const { app: app1 } = await buildApp(config, makeFakeManager());
     app1.enqueueOwner(ALLOWED_USER_ID, "queued before crash");
     app1.persist();
     await app1.close();
 
     // New instance restores the pending event and drains it on start.
-    const fake2 = makeFakeAnthropic([resp([text("drained on restart")])]);
-    const { app: app2, sent } = buildApp(config, fake2);
+    const { app: app2, sent } = await buildApp(config, makeFakeManager([say("drained on restart")]));
     app2.restore();
     app2.start();
     await app2.loop.whenIdle();
@@ -109,14 +117,14 @@ describe("cold-wake recovery (DESIGN §11)", () => {
   it("rehydrates worker records (running → idle, thread id preserved)", async () => {
     const config = buildConfig();
 
-    const { app: app1 } = buildApp(config, makeFakeAnthropic());
+    const { app: app1 } = await buildApp(config, makeFakeManager());
     const info = app1.orchestrator.start("scope A", "proj");
     await app1.orchestrator.whenQuiet();
     app1.persist();
     const threadId = app1.orchestrator.registry.get(info.id)!.threadId;
     await app1.close();
 
-    const { app: app2 } = buildApp(config, makeFakeAnthropic());
+    const { app: app2 } = await buildApp(config, makeFakeManager());
     app2.restore();
     const rec = app2.orchestrator.registry.get(info.id);
     assert.ok(rec, "worker rehydrated");
