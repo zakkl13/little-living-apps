@@ -53,6 +53,8 @@ export interface RunTurnOpts {
   onUsage?: (usage: ManagerUsage) => void;
   /** Observability sink for the reconstructed conversation log (Inspector). */
   onConversation?: (message: ConvMessage) => void;
+  /** Host-side delivery gate. Conversation is still recorded; owner-visible sends can be suppressed. */
+  allowReply?: () => boolean;
 }
 
 export interface ManagerDriverDeps {
@@ -140,7 +142,7 @@ export function createManagerDriver(deps: ManagerDriverDeps): ManagerDriver {
 
       if (finalReply !== undefined) {
         const reply = applyNoReply(finalReply);
-        if (reply) await deps.deliver(chatId, reply);
+        if (reply && (opts?.allowReply?.() ?? true)) await deps.deliver(chatId, reply);
       }
     },
   };

@@ -95,7 +95,7 @@ export function makeFakeManager(initial: ManagerStep[] = []): FakeManager {
           async say(text) {
             opts?.onConversation?.({ role: "assistant", content: [{ type: "text", text }] });
             const reply = applyNoReply(text);
-            if (reply) await deliver(chatId, reply);
+            if (reply && (opts?.allowReply?.() ?? true)) await deliver(chatId, reply);
           },
           async call(tool, args = {}) {
             const t = toolByName.get(tool);

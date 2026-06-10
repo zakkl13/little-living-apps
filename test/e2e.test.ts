@@ -4,7 +4,8 @@
 // sqlite), the real serialized queue/loop, and the real long-poll loop. Nothing is deployed.
 //
 // Scenario: owner message → manager turn → subagent_start ×2 (parallel, prompt-scoped) → workers
-// complete → worker_events → manager records a decision in memory and narrates → Telegram. Asserts
+// complete → worker_events → manager records a decision in memory and only the final worker event
+// narrates → Telegram. Asserts
 // memory writes land in MemFS, the worker prompts carried their scopes, the manager thread id is
 // snapshotted, and a simulated cold wake loses nothing.
 
@@ -26,7 +27,7 @@ async function boot(...args: Parameters<typeof startBot>): Promise<TestBot> {
 }
 
 describe("e2e: owner → manager → parallel workers → narrate", () => {
-  it("dispatches two prompt-scoped workers and narrates their completions", async () => {
+  it("dispatches two prompt-scoped workers and suppresses intermediate worker chatter", async () => {
     const recordDecision: ManagerStep = async (ctx) => {
       await ctx.call("memory_create", {
         path: "/memories/archival/decisions/stack.md",
@@ -53,8 +54,9 @@ describe("e2e: owner → manager → parallel workers → narrate", () => {
     });
 
     bot.sendUpdate(messageUpdate("build the API and its tests in parallel"));
-    await bot.telegram.waitFor(() => bot.telegram.sent.length >= 3);
+    await bot.telegram.waitFor(() => bot.telegram.sent.length >= 2);
     await bot.app.orchestrator.whenQuiet();
+    await bot.app.loop.whenIdle();
     await new Promise((r) => setTimeout(r, 20)); // let the final snapshot settle
 
     // Two workers were actually dispatched, each scoped to a non-overlapping subtree.
@@ -66,10 +68,11 @@ describe("e2e: owner → manager → parallel workers → narrate", () => {
     // The manager's memory-tool write landed in real MemFS (git + sqlite).
     assert.equal(bot.app.mem.search("Fastify").length, 1, "decision recorded in memory");
 
-    // The owner saw the ack and both completions.
+    // The owner saw the initial ack and the final worker completion, not every worker-event turn.
     const texts = bot.telegram.sent.map((m) => m.text);
+    assert.equal(texts.length, 2);
     assert.ok(texts.some((t) => /two workers/.test(t)));
-    assert.ok(texts.some((t) => /api worker done/.test(t)));
+    assert.ok(!texts.some((t) => /api worker done/.test(t)));
     assert.ok(texts.some((t) => /test worker done/.test(t)));
 
     // The manager thread id was snapshotted (Codex resumes it on cold wake — §7).

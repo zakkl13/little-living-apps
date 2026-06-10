@@ -8,7 +8,7 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import type { Input, ThreadEvent, Usage } from "@openai/codex-sdk";
-import { createManagerDriver, type ConvMessage, type ManagerUsage } from "../src/manager/driver.js";
+import { createManagerDriver, type ConvMessage, type ManagerUsage, type RunTurnOpts } from "../src/manager/driver.js";
 import type { ManagerThread, ManagerThreadFactory } from "../src/manager/managerCodex.js";
 
 // ---- event + factory builders ----------------------------------------------
@@ -109,8 +109,9 @@ function driverWith(turns: Array<(input: Input) => ThreadEvent[]>, header = "HEA
     },
     buildContextHeader: () => header,
   });
-  const run = (input: { text: string; imagePath?: string }, chatId = 7) =>
+  const run = (input: { text: string; imagePath?: string }, chatId = 7, extraOpts: Partial<RunTurnOpts> = {}) =>
     driver.runTurn(input, chatId, {
+      ...extraOpts,
       onUsage: (u) => h.usages.push(u),
       onConversation: (m) => h.conversation.push(m),
     });
@@ -140,6 +141,18 @@ describe("ManagerDriver turn", () => {
     ]);
     await run({ text: "build me a thing" });
     assert.deepEqual(h.sent, [{ chatId: 7, text: "done" }]);
+  });
+
+  it("records but does not deliver when the host delivery gate is closed", async () => {
+    const { h, run } = driverWith([() => [agentMessage("internal progress"), turnCompleted()]]);
+    await run({ text: "worker finished" }, 7, { allowReply: () => false });
+    assert.deepEqual(h.sent, []);
+    assert.ok(
+      h.conversation.some((m) =>
+        m.content.some((b) => b.type === "text" && b.text === "internal progress"),
+      ),
+      "suppressed replies still appear in Inspector conversation",
+    );
   });
 
   it("stays silent on a bare NO_REPLY, and when reasoning precedes it", async () => {

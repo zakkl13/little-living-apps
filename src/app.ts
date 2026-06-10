@@ -167,10 +167,17 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
     runTurn: async (event, chatId, turnId) => {
       telemetry.beginTurn(turnId, event.kind, requestText(event), chatId);
       backend.setActiveTurn(turnId);
+      const allowReply = (): boolean => {
+        if (event.kind === "owner_message") return true;
+        const workersRunning = orchestrator.list().some((w) => w.status === "running");
+        const workerEventsQueued = queue.snapshot().some((e) => e.kind === "worker_event");
+        return !workersRunning && !workerEventsQueued;
+      };
       try {
         await backend.driver.runTurn(toTurnInput(event), chatId, {
           onUsage: (u) => telemetry.recordUsage(turnId, u),
           onConversation: (m) => telemetry.recordConversation(m),
+          allowReply,
         });
       } finally {
         telemetry.endTurn(turnId);
