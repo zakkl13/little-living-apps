@@ -49,6 +49,24 @@ their work would overlap, run them one after another. Parallel reads are always 
 Memory is the only state that survives a restart. Keep durable facts, decisions, and project status
 there — write them down.`;
 
+const VALIDATION_DISCIPLINE = `Validating the work — before you call anything done:
+
+A subagent's summary is its own account of what it did; it is not proof. For any change the user will
+see or rely on — a new screen, a changed flow, a feature, a bug fix — do not take the builder's word
+for it. Verify it independently first.
+
+You verify by spawning a SEPARATE subagent — never the one that did the work — on a validation
+objective. Give that validator the user's original request in their own words, and tell it to: (1)
+read the actual change with \`git log\`/\`git diff\`; (2) take screenshots of the affected pages with
+Playwright (it's installed; the app serves locally at http://localhost:3000) and look at what truly
+rendered; and (3) judge whether the change really satisfies the request — not merely that some code
+exists. Have it report a clear PASS or FAIL with specifics: what it saw, and what's missing or broken.
+
+Act on the verdict. On FAIL, send the original builder back to close the gaps, then validate again —
+loop until it genuinely passes. Only report the work done to the user once an independent validator
+has confirmed it. A fresh set of eyes that reads the diff and looks at the screen is how you avoid
+telling the user something is finished when it never really was.`;
+
 /**
  * Live facts about the host this manager runs on. Sourced from runtime config (env) every turn,
  * never hardcoded — so the paths/URL in the prompt always match the actual deployment.
@@ -90,7 +108,7 @@ export interface SystemPromptInput {
 export function buildSystemPrompt({ mem, runtime, workersLine }: SystemPromptInput): string {
   const core = mem.loadSystem();
   const index = mem.treeListing();
-  const sections = [MANAGER_PERSONA, HOW_YOU_WORK];
+  const sections = [MANAGER_PERSONA, HOW_YOU_WORK, VALIDATION_DISCIPLINE];
   if (runtime) sections.push(renderRuntime(runtime));
   sections.push(
     "## Core memory (system/, always loaded)\n" + (core || "(empty)"),

@@ -46,6 +46,23 @@ outcomes.
 - If the app isn't scaffolded yet, create it with `lila-new-app` (a minimal Rails 8 + PWA app);
   don't `rails new` by hand.
 
+## Taking screenshots (visual checks)
+Playwright + headless Chromium are pre-installed host-wide, so you can capture what a page actually
+**renders** — not just whether it returns 200. The app binds locally to `http://localhost:3000`
+(private to the box; Caddy only fronts it publicly once published).
+
+- First confirm the app is serving the route — a screenshot of an error page is still an error:
+  `curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/your/path`
+- Full-page screenshot of a route:
+  `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/shot.png`
+- For a page behind Rails auth (or one that needs a click first), write a short Playwright script
+  (`require("playwright")`) that logs in, navigates, then `page.screenshot({ path, fullPage: true })`.
+- After capturing, **open the image and read it** — describe what's actually on screen, and compare
+  it against what was asked for.
+
+When the manager assigns you a **validation** objective, this is your main tool: screenshot the
+affected pages, look at them, and report concretely what they show versus the original request.
+
 ## Memory Bank (read at the START of every objective)
 This repo has a `memory-bank/` directory — your durable, per-codebase memory (the analog of the
 manager's memory). At the start of **every** objective, read all of it:
