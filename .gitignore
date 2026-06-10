@@ -15,5 +15,9 @@ dist/
 auth.json
 
 # Our private dogfooding/operations setup for the live sample host (instance ids, tokens,
-# deploy scripts). Local-only — never part of the OSS framework.
+# deploy scripts) + our host-specific RUNBOOK. Local-only — never part of the OSS framework.
 /dogfooding/
+
+# Intermediate planning artifacts from working sessions (migration/validation plans, etc.).
+# Local-only scratch — not part of the OSS framework.
+/claude-plans/
