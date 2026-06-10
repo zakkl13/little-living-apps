@@ -1,7 +1,7 @@
 // The ManagerDriver (MIGRATION-CODEX.md §4): one manager turn, now over a long-lived Codex thread
 // instead of an Anthropic createMessage loop. Pop an event → prepend the volatile context header →
-// runStreamed → stream items: an `agent_message` is the manager's reply to the owner (honoring the
-// NO_REPLY sentinel); `mcp_tool_call` is internal (memory/orchestration) and only logged; `reasoning`
+// runStreamed → stream items: the final `agent_message` is the manager's reply to the owner (honoring
+// the NO_REPLY sentinel); `mcp_tool_call` is internal (memory/orchestration) and only logged; `reasoning`
 // is private and never delivered. The async worker model is unchanged: subagent_start (an MCP tool)
 // returns immediately, the turn ends with an ack, and the worker's completion re-enters as an event.
 //
@@ -112,10 +112,16 @@ export function createManagerDriver(deps: ManagerDriverDeps): ManagerDriver {
       });
 
       let failure: string | undefined;
+      let finalReply: string | undefined;
       try {
         const { events } = await t.runStreamed(codexInput);
         for await (const event of events) {
-          await handleEvent(event, chatId, deps, opts, (f) => (failure = f));
+          handleEvent(
+            event,
+            opts,
+            (f) => (failure = f),
+            (text) => (finalReply = text),
+          );
         }
       } catch (err) {
         failure = (err as Error).message;
@@ -127,25 +133,34 @@ export function createManagerDriver(deps: ManagerDriverDeps): ManagerDriver {
         pendingResumeId = undefined;
       }
 
-      if (failure) await deps.deliver(chatId, friendlyError(failure));
+      if (failure) {
+        await deps.deliver(chatId, friendlyError(failure));
+        return;
+      }
+
+      if (finalReply !== undefined) {
+        const reply = applyNoReply(finalReply);
+        if (reply) await deps.deliver(chatId, reply);
+      }
     },
   };
 }
 
-async function handleEvent(
+function handleEvent(
   event: ThreadEvent,
-  chatId: number,
-  deps: ManagerDriverDeps,
   opts: RunTurnOpts | undefined,
   setFailure: (f: string) => void,
-): Promise<void> {
+  setFinalReply: (text: string) => void,
+): void {
   switch (event.type) {
     case "item.completed": {
       const item = event.item;
       if (item.type === "agent_message") {
         opts?.onConversation?.({ role: "assistant", content: [{ type: "text", text: item.text }] });
-        const reply = applyNoReply(item.text);
-        if (reply) await deps.deliver(chatId, reply);
+        // The SDK's buffered `run()` treats the last completed agent message as `finalResponse`.
+        // Keep streaming observability, but apply the same owner-delivery rule to avoid progress
+        // chatter becoming many Telegram messages from a single turn.
+        setFinalReply(item.text);
       } else if (item.type === "mcp_tool_call") {
         logger.debug("Manager tool call", { server: item.server, tool: item.tool, status: item.status });
         opts?.onConversation?.({

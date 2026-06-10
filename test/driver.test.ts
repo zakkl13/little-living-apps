@@ -1,6 +1,6 @@
 // The ManagerDriver over a *real* fake Codex thread (scripted ThreadEvent stream) — the same
 // seam-injection discipline the old fake-Anthropic tests used. Asserts the turn contract: an
-// agent_message is delivered (honoring NO_REPLY), reasoning stays private, usage is reported, the
+// final agent_message is delivered (honoring NO_REPLY), reasoning stays private, usage is reported, the
 // volatile context header is prepended, an owner image becomes a local_image input, the thread id is
 // captured, resume/reset choose start vs resume, and a turn.failed surfaces a friendly error.
 
@@ -127,13 +127,30 @@ describe("ManagerDriver turn", () => {
     assert.deepEqual(h.sent, [{ chatId: 7, text: "on it 👍" }]);
   });
 
+  it("delivers only the final agent_message from a streamed turn", async () => {
+    const { h, run } = driverWith([
+      () => [
+        agentMessage("starting"),
+        mcpCall("lila", "subagent_start"),
+        agentMessage("still working"),
+        mcpCall("lila", "subagent_poll"),
+        agentMessage("done"),
+        turnCompleted(),
+      ],
+    ]);
+    await run({ text: "build me a thing" });
+    assert.deepEqual(h.sent, [{ chatId: 7, text: "done" }]);
+  });
+
   it("stays silent on a bare NO_REPLY, and when reasoning precedes it", async () => {
     const { h, run } = driverWith([
       () => [agentMessage("NO_REPLY"), turnCompleted()],
       () => [agentMessage("Worker still running; no need to message yet.\n\nNO_REPLY"), turnCompleted()],
+      () => [agentMessage("intermediate status"), agentMessage("NO_REPLY"), turnCompleted()],
     ]);
     await run({ text: "hi" });
     await run({ text: "kick it off" });
+    await run({ text: "worker event" });
     assert.equal(h.sent.length, 0, "NO_REPLY suppresses the whole message");
   });
 
