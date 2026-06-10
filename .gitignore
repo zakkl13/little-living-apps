@@ -13,3 +13,7 @@ dist/
 # Codex auth / session data if it ever lands in-repo by accident
 .codex/
 auth.json
+
+# Our private dogfooding/operations setup for the live sample host (instance ids, tokens,
+# deploy scripts). Local-only — never part of the OSS framework.
+/dogfooding/
