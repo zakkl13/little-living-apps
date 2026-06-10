@@ -86,10 +86,11 @@ new Codex({
     model_reasoning_effort: "xhigh",
     features: { shell_tool: false },         // no shell/exec
     tools: { web_search: false, view_image: true },
-    web_search: false,
+    web_search: "disabled",
     mcp_servers: { lila: {
       url: "http://127.0.0.1:<port>/mcp",
       bearer_token_env_var: "LILA_MCP_TOKEN",
+      default_tools_approval_mode: "approve",
     } },
   },
 })

@@ -54,9 +54,13 @@ export function createManagerThreadFactory(opts: ManagerCodexOptions): ManagerTh
     config: {
       features: { shell_tool: false },
       tools: { web_search: false, view_image: true },
-      web_search: false,
+      web_search: "disabled",
       mcp_servers: {
-        lila: { url: opts.mcpUrl, bearer_token_env_var: MCP_TOKEN_ENV_VAR },
+        lila: {
+          url: opts.mcpUrl,
+          bearer_token_env_var: MCP_TOKEN_ENV_VAR,
+          default_tools_approval_mode: "approve",
+        },
       },
     },
   });

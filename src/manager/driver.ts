@@ -150,9 +150,17 @@ async function handleEvent(
         logger.debug("Manager tool call", { server: item.server, tool: item.tool, status: item.status });
         opts?.onConversation?.({
           role: "assistant",
-          content: [{ type: "tool_use", name: `${item.server}.${item.tool}`, input: item.arguments }],
+          content: [
+            {
+              type: "tool_use",
+              name: `${item.server}.${item.tool}`,
+              input: item.arguments,
+              status: item.status,
+              ...(item.error?.message ? { error: item.error.message } : {}),
+            },
+          ],
         });
-        const resultText = mcpResultText(item.result);
+        const resultText = item.error?.message ? `error: ${item.error.message}` : mcpResultText(item.result);
         if (resultText !== undefined) {
           opts?.onConversation?.({ role: "user", content: [{ type: "tool_result", content: resultText }] });
         }

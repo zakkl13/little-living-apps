@@ -8,7 +8,7 @@ import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
 import type { Input, ThreadEvent, Usage } from "@openai/codex-sdk";
-import { createManagerDriver, type ManagerUsage } from "../src/manager/driver.js";
+import { createManagerDriver, type ConvMessage, type ManagerUsage } from "../src/manager/driver.js";
 import type { ManagerThread, ManagerThreadFactory } from "../src/manager/managerCodex.js";
 
 // ---- event + factory builders ----------------------------------------------
@@ -24,6 +24,18 @@ const reasoning = (text: string): ThreadEvent => ({
 const mcpCall = (server: string, tool: string): ThreadEvent => ({
   type: "item.completed",
   item: { id: "m", type: "mcp_tool_call", server, tool, arguments: {}, status: "completed" },
+});
+const failedMcpCall = (message: string): ThreadEvent => ({
+  type: "item.completed",
+  item: {
+    id: "m",
+    type: "mcp_tool_call",
+    server: "lila",
+    tool: "memory_view",
+    arguments: { path: "/memories/project_status.md" },
+    status: "failed",
+    error: { message },
+  },
 });
 const usage = (input = 100, output = 20): Usage => ({
   input_tokens: input,
@@ -84,11 +96,12 @@ function makeFakeFactory(turns: Array<(input: Input) => ThreadEvent[]>): {
 interface Harness {
   sent: Array<{ chatId: number; text: string }>;
   usages: ManagerUsage[];
+  conversation: ConvMessage[];
 }
 
 function driverWith(turns: Array<(input: Input) => ThreadEvent[]>, header = "HEADER") {
   const { factory, state } = makeFakeFactory(turns);
-  const h: Harness = { sent: [], usages: [] };
+  const h: Harness = { sent: [], usages: [], conversation: [] };
   const driver = createManagerDriver({
     factory,
     deliver: async (chatId, text) => {
@@ -97,7 +110,10 @@ function driverWith(turns: Array<(input: Input) => ThreadEvent[]>, header = "HEA
     buildContextHeader: () => header,
   });
   const run = (input: { text: string; imagePath?: string }, chatId = 7) =>
-    driver.runTurn(input, chatId, { onUsage: (u) => h.usages.push(u) });
+    driver.runTurn(input, chatId, {
+      onUsage: (u) => h.usages.push(u),
+      onConversation: (m) => h.conversation.push(m),
+    });
   return { driver, state, h, run };
 }
 
@@ -127,6 +143,22 @@ describe("ManagerDriver turn", () => {
     ]);
     await run({ text: "do the thing" });
     assert.deepEqual(h.sent.map((m) => m.text), ["done"]);
+  });
+
+  it("records failed MCP tool-call details for observability", async () => {
+    const { h, run } = driverWith([() => [failedMcpCall("user cancelled MCP tool call"), agentMessage("blocked"), turnCompleted()]]);
+    await run({ text: "read memory" });
+    const blocks = h.conversation.flatMap((m) => m.content);
+    assert.ok(
+      blocks.some(
+        (b) =>
+          b.type === "tool_use" &&
+          b.name === "lila.memory_view" &&
+          b.status === "failed" &&
+          b.error === "user cancelled MCP tool call",
+      ),
+    );
+    assert.ok(blocks.some((b) => b.type === "tool_result" && b.content === "error: user cancelled MCP tool call"));
   });
 
   it("reports token usage from turn.completed", async () => {
