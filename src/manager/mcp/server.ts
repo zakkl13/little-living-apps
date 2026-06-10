@@ -37,24 +37,35 @@ export interface LilaMcpServer {
 
 export async function startLilaMcpServer(deps: LilaMcpDeps): Promise<LilaMcpServer> {
   let turnId = 0;
+  const transports = new Map<string, StreamableHTTPServerTransport>();
 
-  const mcp = new McpServer({ name: "lila", version: "0.3.0" });
-  for (const tool of lilaTools({ ...deps, currentTurnId: () => turnId })) {
-    mcp.registerTool(
-      tool.name,
-      { description: tool.description, inputSchema: tool.inputSchema },
-      // The MCP SDK passes parsed args; our handlers take a plain record and return {content,isError}.
-      (args: Record<string, unknown>) => tool.handler(args) as never,
-    );
-  }
+  const makeTransport = async (): Promise<StreamableHTTPServerTransport> => {
+    const mcp = new McpServer({ name: "lila", version: "0.3.0" });
+    for (const tool of lilaTools({ ...deps, currentTurnId: () => turnId })) {
+      mcp.registerTool(
+        tool.name,
+        { description: tool.description, inputSchema: tool.inputSchema },
+        // The MCP SDK passes parsed args; our handlers take a plain record and return {content,isError}.
+        (args: Record<string, unknown>) => tool.handler(args) as never,
+      );
+    }
 
-  // Stateful session mode: initialize issues a session id Codex echoes on later requests, so the
-  // handshake's separate HTTP requests share the server's initialized state (proven in the spike).
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-    enableJsonResponse: true,
-  });
-  await mcp.connect(transport);
+    // One stateful transport per MCP session. Codex may open more than one client against this URL
+    // across probes/turns; sharing a singleton transport rejects the second initialize as
+    // "Server already initialized".
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      enableJsonResponse: true,
+      onsessioninitialized: (sessionId) => {
+        transports.set(sessionId, transport);
+      },
+      onsessionclosed: (sessionId) => {
+        transports.delete(sessionId);
+      },
+    });
+    await mcp.connect(transport);
+    return transport;
+  };
 
   const server: Server = createServer((req, res) => {
     if (!authorized(req, deps.token)) {
@@ -66,10 +77,12 @@ export async function startLilaMcpServer(deps: LilaMcpDeps): Promise<LilaMcpServ
       return;
     }
     void readBody(req).then((body) =>
-      transport.handleRequest(req, res, body).catch((err) => {
-        logger.error("Lila MCP request failed", { error: (err as Error).message });
-        if (!res.headersSent) res.writeHead(500).end();
-      }),
+      resolveTransport(req, res, body, transports, makeTransport)
+        .then((transport) => transport?.handleRequest(req, res, body))
+        .catch((err) => {
+          logger.error("Lila MCP request failed", { error: (err as Error).message });
+          if (!res.headersSent) res.writeHead(500).end();
+        }),
     );
   });
 
@@ -89,7 +102,7 @@ export async function startLilaMcpServer(deps: LilaMcpDeps): Promise<LilaMcpServ
     },
     close: () =>
       new Promise((resolve) => {
-        void transport.close();
+        for (const transport of transports.values()) void transport.close();
         server.close(() => resolve());
       }),
   };
@@ -108,4 +121,39 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   } catch {
     return undefined;
   }
+}
+
+async function resolveTransport(
+  req: IncomingMessage,
+  res: ServerResponse,
+  body: unknown,
+  transports: Map<string, StreamableHTTPServerTransport>,
+  makeTransport: () => Promise<StreamableHTTPServerTransport>,
+): Promise<StreamableHTTPServerTransport | undefined> {
+  const sessionId = headerValue(req.headers["mcp-session-id"]);
+  if (sessionId) {
+    const transport = transports.get(sessionId);
+    if (transport) return transport;
+    res.writeHead(404, { "content-type": "text/plain" }).end("MCP session not found");
+    return undefined;
+  }
+  if (isInitializeRequest(body)) return makeTransport();
+
+  res.writeHead(400, { "content-type": "text/plain" }).end("Missing MCP session");
+  return undefined;
+}
+
+function headerValue(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+function isInitializeRequest(body: unknown): boolean {
+  const messages = Array.isArray(body) ? body : [body];
+  return messages.some(
+    (msg) =>
+      msg !== null &&
+      typeof msg === "object" &&
+      "method" in msg &&
+      (msg as { method?: unknown }).method === "initialize",
+  );
 }

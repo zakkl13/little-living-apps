@@ -1,8 +1,7 @@
-// MemFS — the storage backend behind Anthropic's native memory tool (`memory_20250818`),
-// implementing the fixed command set (view/create/str_replace/insert/delete/rename) over a
-// `/memories` directory (DESIGN §5). Source of truth is markdown on disk in a git repo; the FTS
-// index is written through on every change. Two behaviors are *our* additions on top of the
-// standard tool: `system/` is auto-injected into the prompt in full, and we expose search.
+// MemFS — the storage backend behind the Lila MCP memory tools. It implements the fixed command
+// set (view/create/str_replace/insert/delete/rename) over a `/memories` directory. Source of truth
+// is markdown on disk in a git repo; the FTS index is written through on every change. `system/` is
+// auto-injected into the prompt in full, and we expose search over all memory files.
 
 import {
   existsSync,

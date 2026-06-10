@@ -10,6 +10,9 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
 import { openMemFs, type MemFs } from "../src/memory/memfs.js";
 import { lilaTools, type LilaTool } from "../src/manager/mcp/tools.js";
 import { startLilaMcpServer, type LilaMcpServer } from "../src/manager/mcp/server.js";
@@ -154,5 +157,20 @@ describe("Lila MCP server — HTTP bearer gating", () => {
     assert.equal(res.status, 200, "authorized handshake succeeds");
     const body = (await res.json()) as { result?: { serverInfo?: { name?: string } } };
     assert.equal(body.result?.serverInfo?.name, "lila");
+  });
+
+  it("accepts multiple independent MCP clients against the same URL", async () => {
+    const server = await boot();
+
+    for (const name of ["first", "second"]) {
+      const client = new Client({ name, version: "0" });
+      const transport = new StreamableHTTPClientTransport(new URL(server.url), {
+        requestInit: { headers: { authorization: "Bearer secret-mcp" } },
+      });
+      await client.connect(transport);
+      const tools = await client.listTools();
+      assert.ok(tools.tools.some((t) => t.name === "memory_view"));
+      await client.close();
+    }
   });
 });
