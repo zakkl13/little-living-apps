@@ -14,7 +14,8 @@ import { join } from "node:path";
 import type { CodexRunner } from "./runner.js";
 import { createWorkerRegistry, type WorkerRegistry } from "./registry.js";
 import type { Orchestrator, WorkerInfo } from "../manager/tools/orchestration.js";
-import { clipSummarizer, type Summarize } from "./summarize.js";
+import type { Summarize } from "./summarize.js";
+import { managerSummarizer, withProtocol } from "./protocol.js";
 import { logger } from "../logger.js";
 
 export interface OrchestratorDeps {
@@ -37,7 +38,9 @@ export interface WorkerOrchestrator extends Orchestrator {
 
 export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
   const registry = createWorkerRegistry();
-  const summarize = deps.summarize ?? clipSummarizer();
+  // Default condenser keeps only the worker's own summary block (protocol.ts), not a byte-clip of its
+  // whole transcript — so the manager gets the worker's intended summary, conclusion included.
+  const summarize = deps.summarize ?? managerSummarizer();
   const inflight = new Set<Promise<void>>();
   let counter = 0;
 
@@ -55,7 +58,8 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
 
     const promise = deps.runner
       .run({
-        prompt,
+        // Every worker turn carries the standing protocol (summary-block contract + git guidance).
+        prompt: withProtocol(prompt),
         ...(resume && rec.threadId ? { resumeThreadId: rec.threadId } : {}),
         signal: abort.signal,
         onThreadId: (tid) => {

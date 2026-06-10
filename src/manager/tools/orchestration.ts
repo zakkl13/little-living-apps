@@ -101,7 +101,9 @@ export function orchestrationToolModule(
       subagent_poll: (input) => {
         const r = need().poll(String(input.id));
         if (!r) return { content: `no such worker: ${String(input.id)}`, isError: true };
-        return { content: `${r.info.id} [${r.info.status}] ${r.info.purpose}\n${r.latest ?? "(no output yet)"}` };
+        // Just status + latest output — the manager already wrote (and can recall) the objective, so
+        // echoing it back here only wastes context.
+        return { content: `${r.info.id} [${r.info.status}]\n${r.latest ?? "(no output yet)"}` };
       },
       subagent_list: () => {
         const ws = need().list();

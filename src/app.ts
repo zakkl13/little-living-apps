@@ -83,12 +83,15 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
     orchestrationToolModule(orchestrator, telemetry),
   ]);
 
-  const fmtWorker = (w: WorkerInfo): string => `- ${w.id} [${w.status}] ${w.purpose} @ ${w.project}`;
-
-  function workersLine(): string | undefined {
-    const ws = orchestrator.list();
-    return ws.length ? ws.map(fmtWorker).join("\n") : undefined;
-  }
+  // Compact one-liner per worker. The objective can be many paragraphs; the roster only needs a
+  // glanceable label, and this file is force-injected into the system prompt every turn — so we keep
+  // just the first line, capped, to stop the roster from bloating the prompt as workers accumulate.
+  const oneLine = (s: string, max = 80): string => {
+    const first = (s.split("\n").find((l) => l.trim()) ?? "").trim();
+    return first.length > max ? first.slice(0, max - 1) + "…" : first;
+  };
+  const fmtWorker = (w: WorkerInfo): string =>
+    `- ${w.id} [${w.status}] ${oneLine(w.purpose)} @ ${w.project.split("/").pop()}`;
 
   function mirrorWorkers(ws: WorkerInfo[]): void {
     const body = ws.length ? ws.map(fmtWorker).join("\n") : "(no active workers)";
@@ -167,8 +170,9 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
               appPublicUrl: config.appPublicUrl,
               workspaceDir: config.workspaceDir,
             };
-            const line = workersLine();
-            return buildSystemPrompt(line ? { mem, runtime, workersLine: line } : { mem, runtime });
+            // The worker roster reaches the prompt once, via the compact system/workers.md mirror
+            // (loaded as core memory) — no separate workersLine section, which would double-inject it.
+            return buildSystemPrompt({ mem, runtime });
           },
         });
       } finally {
@@ -214,6 +218,10 @@ export function createManagerApp(deps: ManagerAppDeps): ManagerApp {
       queue.load(snap.queue);
       orchestrator.registry.rehydrate(snap.workers);
       if (snap.cost) telemetry.loadCost(snap.cost);
+      // Rewrite the roster mirror in the current (compact) format — rehydrate doesn't fire
+      // onWorkersChanged, so without this an old bloated workers.md would linger until the next
+      // worker state change.
+      mirrorWorkers(orchestrator.registry.infos());
       logger.info("Restored manager state from snapshot", {
         messages: snap.transcript.length,
         pending: snap.queue.length,
