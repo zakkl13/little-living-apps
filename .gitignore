@@ -21,3 +21,6 @@ auth.json
 # Intermediate planning artifacts from working sessions (migration/validation plans, etc.).
 # Local-only scratch — not part of the OSS framework.
 /claude-plans/
+
+# Eval run artifacts (transcripts + reports per run). The suite + baseline ARE committed.
+/eval/results/
