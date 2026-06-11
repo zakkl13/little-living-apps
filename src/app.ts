@@ -20,8 +20,8 @@ import { createTelemetry, type Telemetry } from "./runtime/telemetry.js";
 import type { TelegramUpdate } from "./transport/telegram.js";
 
 import type { CodexRunner } from "./workers/runner.js";
-import { createOrchestrator, type WorkerOrchestrator } from "./workers/orchestrator.js";
-import type { WorkerInfo } from "./workers/types.js";
+import { createOrchestrator } from "./workers/orchestrator.js";
+import type { Orchestrator } from "./workers/types.js";
 import type { Summarize } from "./workers/summarize.js";
 
 export interface ManagerAppDeps {
@@ -43,14 +43,14 @@ export interface ManagerApp {
   queue: EventQueue;
   loop: ManagerLoop;
   mem: MemFs;
-  orchestrator: WorkerOrchestrator;
+  orchestrator: Orchestrator;
   /** Passive observability recorder (read by the Inspector; fed by the loop + driver). */
   telemetry: Telemetry;
   /** Enqueue an owner message (the poller calls this after authorizing). */
   enqueueOwner(chatId: number, text: string): void;
   /** Authorize + handle commands + enqueue, from a raw Telegram update (the poller sink). */
   ingestTelegramUpdate(update: TelegramUpdate): Promise<void>;
-  /** Persist thread id + queue + workers (run after each turn). */
+  /** Persist thread id + queue + usage (run after each turn). */
   persist(): void;
   /** Rehydrate from the last snapshot (cold-wake recovery). */
   restore(): void;
@@ -71,10 +71,23 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
     runner,
     workspaceDir: config.workspaceDir,
     emitEvent: (e) =>
-      queue.enqueue({ kind: "worker_event", workerId: e.workerId, status: e.status, summary: e.summary }),
+      queue.enqueue({
+        kind: "worker_event",
+        workerId: e.workerId,
+        objective: e.objective,
+        status: e.status,
+        summary: e.summary,
+      }),
     ...(deps.summarize ? { summarize: deps.summarize } : {}),
-    onWorkersChanged: mirrorWorkers,
   });
+
+  // One-time hygiene: pre-ephemeral versions mirrored a worker roster into this always-loaded
+  // system file. Workers are single-shot now, so a lingering roster is stale context — drop it.
+  try {
+    mem.delete({ command: "delete", path: "/memories/system/workers.md" });
+  } catch {
+    // not present — nothing to clean
+  }
 
   // The manager backend: the Lila MCP server + the Codex-thread driver. Memory + subagent tool
   // handlers run in-process against the live MemFs and Orchestrator above.
@@ -86,25 +99,12 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
     deliver,
   });
 
-  // Compact one-liner per worker. The objective can be many paragraphs; the roster only needs a
-  // glanceable label, and this file is force-injected into the context header every turn — so we keep
-  // just the first line, capped, to stop the roster from bloating the prompt as workers accumulate.
+  // Compact one-liner for an objective: many paragraphs in, one glanceable label out. Used to make
+  // worker events self-describing in the manager's context (workers have no roster to consult).
   const oneLine = (s: string, max = 80): string => {
     const first = (s.split("\n").find((l) => l.trim()) ?? "").trim();
     return first.length > max ? first.slice(0, max - 1) + "…" : first;
   };
-  const fmtWorker = (w: WorkerInfo): string =>
-    `- ${w.id} [${w.status}] ${oneLine(w.purpose)} @ ${w.project.split("/").pop()}`;
-
-  function mirrorWorkers(ws: WorkerInfo[]): void {
-    const body = ws.length ? ws.map(fmtWorker).join("\n") : "(no active workers)";
-    // create overwrites; commit-per-write dedups identical content, so redundant mirrors are free.
-    mem.create({
-      command: "create",
-      path: "/memories/system/workers.md",
-      file_text: `---\ndescription: active workers (mirrors the registry)\n---\n${body}\n`,
-    });
-  }
 
   function handleCommand(text: string, chatId: number): void {
     const command = text.split(/\s+/)[0]?.toLowerCase().replace(/@.*$/, "") ?? "";
@@ -119,10 +119,8 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
         );
         return;
       case "/status": {
-        const ws = orchestrator.list();
         const lines = [
-          `Workers: ${ws.length}`,
-          ...ws.map((w) => `  ${w.id} [${w.status}] ${w.purpose}`),
+          `Workers running: ${orchestrator.running()}`,
           `Pending events: ${queue.size()}`,
           `Memory: ${config.memoryDir}`,
         ];
@@ -143,18 +141,19 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
   function persist(): void {
     const threadId = backend.driver.threadId();
     snapshots.save({
-      version: 3,
+      version: 4,
       ...(threadId ? { managerThreadId: threadId } : {}),
       queue: queue.snapshot(),
-      workers: orchestrator.registry.snapshot(),
       usage: telemetry.usageSnapshot(),
     });
   }
 
+  // A worker event leads with the objective's first line: the worker is gone, so the event itself
+  // must say what the work was — the manager has no roster to resolve an id against.
   const requestText = (event: ManagerEvent): string =>
     event.kind === "owner_message"
       ? event.text
-      : `[worker ${event.workerId} ${event.status}] ${event.summary}`;
+      : `[subagent ${event.status}: ${oneLine(event.objective)}]\n${event.summary}`;
 
   const toTurnInput = (event: ManagerEvent): TurnInput =>
     event.kind === "owner_message"
@@ -169,9 +168,8 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
       backend.setActiveTurn(turnId);
       const allowReply = (): boolean => {
         if (event.kind === "owner_message") return true;
-        const workersRunning = orchestrator.list().some((w) => w.status === "running");
         const workerEventsQueued = queue.snapshot().some((e) => e.kind === "worker_event");
-        return !workersRunning && !workerEventsQueued;
+        return orchestrator.running() === 0 && !workerEventsQueued;
       };
       try {
         await backend.driver.runTurn(toTurnInput(event), chatId, {
@@ -235,16 +233,10 @@ export async function createManagerApp(deps: ManagerAppDeps): Promise<ManagerApp
       if (!snap) return;
       backend.driver.adoptThreadId(snap.managerThreadId);
       queue.load(snap.queue);
-      orchestrator.registry.rehydrate(snap.workers);
       if (snap.usage) telemetry.loadUsage(snap.usage);
-      // Rewrite the roster mirror in the current (compact) format — rehydrate doesn't fire
-      // onWorkersChanged, so without this an old bloated workers.md would linger until the next
-      // worker state change.
-      mirrorWorkers(orchestrator.registry.infos());
       logger.info("Restored manager state from snapshot", {
         managerThread: snap.managerThreadId ?? "(fresh)",
         pending: snap.queue.length,
-        workers: snap.workers.length,
       });
     },
     start: () => loop.start(),

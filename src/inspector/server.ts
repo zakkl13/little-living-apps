@@ -10,7 +10,6 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 
 import type { ConvMessage } from "../manager/driver.js";
-import type { WorkerSnapshot } from "../workers/registry.js";
 import type { Telemetry } from "../runtime/telemetry.js";
 import type { AppFiles } from "./appfiles.js";
 import { logger } from "../logger.js";
@@ -28,8 +27,6 @@ export interface InspectorDeps {
   conversation: () => ConvMessage[];
   /** All memory files on disk (MemFs.listAll). */
   memories: () => Array<{ path: string; body: string }>;
-  /** Worker registry projection (WorkerOrchestrator.registry.snapshot). */
-  workers: () => WorkerSnapshot[];
   appFiles: AppFiles;
 }
 
@@ -118,7 +115,7 @@ function overview(deps: InspectorDeps): unknown {
     usage: deps.telemetry.meter(),
     counts: {
       turns: turns.length,
-      workers: deps.workers().length,
+      workers: new Set(deps.telemetry.prompts().map((p) => p.workerId)).size,
       memories: deps.memories().length,
     },
     lastTurn: turns.length ? turns[turns.length - 1] : null,
@@ -144,13 +141,15 @@ function usage(deps: InspectorDeps): unknown {
   };
 }
 
+// Workers are ephemeral (single-shot) — there is no registry. This view is the dispatch history:
+// every worker launch the telemetry traced, with the exact prompt it received, newest first.
 function workersView(deps: InspectorDeps): unknown {
   const prompts = deps.telemetry.prompts();
+  const ids = [...new Set(prompts.map((p) => p.workerId))];
   return {
-    workers: deps.workers().map((w) => ({
-      ...w,
-      prompts: prompts.filter((p) => p.workerId === w.id),
-    })),
+    workers: ids
+      .map((id) => ({ id, prompts: prompts.filter((p) => p.workerId === id) }))
+      .reverse(),
   };
 }
 

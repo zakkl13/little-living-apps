@@ -143,16 +143,17 @@ export function lilaTools(deps: LilaToolDeps): LilaTool[] {
     },
   ];
 
-  // ---- orchestration tools (async; map onto the live Orchestrator) ----
-  const stamp = (workerId: string, kind: "start" | "send" | "steer" | "cancel", prompt: string): void =>
-    telemetry?.recordPrompt({ turnId: deps.currentTurnId(), workerId, kind, prompt });
-
+  // ---- orchestration (async; maps onto the live Orchestrator) ----
+  // Subagents are single-shot: there is deliberately no send/steer/cancel/list. A worker runs its
+  // one objective, reports back once, and is gone; continuity lives in the workspace + git + memory.
   const orchestrationTools: LilaTool[] = [
     {
       name: "subagent_start",
       description:
-        "Spawn a Codex worker on an objective in a project. Returns a worker id; the worker runs in " +
-        "the background and reports back as an event. Give it an explicit, non-overlapping file scope.",
+        "Spawn a single-use Codex worker on an objective. It runs in the background, reports back " +
+        "once as an event, and is then gone — there is no follow-up channel, so put everything it " +
+        "needs (context, scope, how to verify) in the objective. It starts cold, with only the " +
+        "workspace, the git history, and what you wrote.",
       inputSchema: {
         objective: z.string(),
         project: z.string().optional().describe("project dir under the workspace (optional)"),
@@ -160,50 +161,13 @@ export function lilaTools(deps: LilaToolDeps): LilaTool[] {
       handler: guard((a) => {
         const objective = String(a.objective ?? "");
         const w = orch.start(objective, optStr(a.project));
-        stamp(w.id, "start", objective);
-        return ok(`started worker ${w.id} (${w.status}) — ${w.purpose}`);
-      }),
-    },
-    {
-      name: "subagent_send",
-      description: "Send a follow-up message to an idle worker.",
-      inputSchema: { id: z.string(), message: z.string() },
-      handler: guard((a) => {
-        const message = String(a.message ?? "");
-        const w = orch.send(String(a.id), message);
-        stamp(w.id, "send", message);
-        return ok(`sent to ${w.id} (${w.status})`);
-      }),
-    },
-    {
-      name: "subagent_steer",
-      description: "Redirect a busy worker (aborts its current run, resumes with guidance).",
-      inputSchema: { id: z.string(), guidance: z.string() },
-      handler: guard((a) => {
-        const guidance = String(a.guidance ?? "");
-        const w = orch.steer(String(a.id), guidance);
-        stamp(w.id, "steer", guidance);
-        return ok(`steering ${w.id} (${w.status})`);
-      }),
-    },
-    {
-      name: "subagent_cancel",
-      description: "Cancel a worker's run without resuming.",
-      inputSchema: { id: z.string() },
-      handler: guard((a) => {
-        const w = orch.cancel(String(a.id));
-        stamp(w.id, "cancel", "");
-        return ok(`canceled ${w.id} (${w.status})`);
-      }),
-    },
-    {
-      name: "subagent_list",
-      description: "List active workers.",
-      inputSchema: {},
-      handler: guard(() => {
-        const ws = orch.list();
-        if (ws.length === 0) return ok("(no active workers)");
-        return ok(ws.map((w) => `${w.id} [${w.status}] ${w.purpose} @ ${w.project}`).join("\n"));
+        telemetry?.recordPrompt({
+          turnId: deps.currentTurnId(),
+          workerId: w.id,
+          kind: "start",
+          prompt: objective,
+        });
+        return ok("subagent started — it will report back once when it finishes");
       }),
     },
   ];

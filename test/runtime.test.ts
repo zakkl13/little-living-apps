@@ -1,7 +1,7 @@
 // Durability (MIGRATION-CODEX.md §7). Snapshots are written after every turn; a rebuilt app restores
-// the manager thread id (to resume the Codex rollout), the pending queue, and worker records from the
-// last snapshot — a simulated cold wake loses nothing. v3 drops the ModelMessage transcript: Codex
-// owns the thread's rollout on disk.
+// the manager thread id (to resume the Codex rollout) and the pending queue from the last snapshot —
+// a simulated cold wake loses nothing. v4 carries no worker records (workers are ephemeral; only
+// their queued completion events persist) and no ModelMessage transcript: Codex owns the rollout.
 
 import { strict as assert } from "node:assert";
 import { describe, it, afterEach } from "node:test";
@@ -36,14 +36,13 @@ async function buildApp(
 }
 
 describe("snapshot store", () => {
-  it("round-trips a v3 snapshot (thread id + queue + workers)", () => {
+  it("round-trips a v4 snapshot (thread id + queue; no worker roster — workers are ephemeral)", () => {
     const config = buildConfig();
     const store = openSnapshotStore(config.managerStateDir);
     const snap: ManagerSnapshot = {
-      version: 3,
+      version: 4,
       managerThreadId: "thread-xyz",
       queue: [{ kind: "owner_message", id: "evt_1", chatId: 7, text: "pending" }],
-      workers: [{ id: "w1", purpose: "p", project: "/w", status: "idle", threadId: "thread-1" }],
     };
     store.save(snap);
     assert.deepEqual(store.load(), snap);
@@ -54,16 +53,16 @@ describe("snapshot store", () => {
     assert.equal(openSnapshotStore(config.managerStateDir).load(), undefined);
   });
 
-  it("ignores a pre-v3 (Opus) snapshot so a fresh thread starts", () => {
+  it("ignores a pre-v4 snapshot so a fresh thread starts", () => {
     const config = buildConfig();
     const store = openSnapshotStore(config.managerStateDir);
-    // Hand-write a v2 file the way the old runtime would have.
+    // Hand-write a v3 file the way the old runtime would have (worker roster included).
     openSnapshotStore(config.managerStateDir).save({
       // deliberately the old shape
-      version: 2 as unknown as 3,
+      version: 3 as unknown as 4,
       queue: [],
       workers: [],
-    } as ManagerSnapshot);
+    } as unknown as ManagerSnapshot);
     assert.equal(store.load(), undefined, "old snapshot discarded");
   });
 });
@@ -114,20 +113,22 @@ describe("cold-wake recovery (MIGRATION-CODEX.md §7)", () => {
     assert.deepEqual(sent.map((m) => m.text), ["drained on restart"]);
   });
 
-  it("rehydrates worker records (running → idle, thread id preserved)", async () => {
+  it("persists a settled worker's completion event so it survives a restart (workers themselves don't)", async () => {
     const config = buildConfig();
 
+    // Worker settles, its event lands on the queue, but the loop never drains it — then we die.
     const { app: app1 } = await buildApp(config, makeFakeManager());
-    const info = app1.orchestrator.start("scope A", "proj");
+    app1.orchestrator.start("scope A", "proj");
     await app1.orchestrator.whenQuiet();
     app1.persist();
-    const threadId = app1.orchestrator.registry.get(info.id)!.threadId;
     await app1.close();
 
-    const { app: app2 } = await buildApp(config, makeFakeManager());
+    // The fresh instance restores the queued worker_event and the manager turn narrates it —
+    // ephemeral workers leave no roster to rehydrate, but their reports are never lost.
+    const { app: app2, sent } = await buildApp(config, makeFakeManager([say("worker report handled")]));
     app2.restore();
-    const rec = app2.orchestrator.registry.get(info.id);
-    assert.ok(rec, "worker rehydrated");
-    assert.equal(rec!.threadId, threadId, "codex thread id preserved across restart");
+    app2.start();
+    await app2.loop.whenIdle();
+    assert.deepEqual(sent.map((m) => m.text), ["worker report handled"]);
   });
 });

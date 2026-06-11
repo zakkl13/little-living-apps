@@ -155,14 +155,12 @@ async function renderTrace() {
 }
 
 async function renderWorkers() {
+  // Workers are single-shot; this is the dispatch history (newest first), not a live roster.
   const d = await api('api/workers');
-  if (!d.workers.length) { main.innerHTML = card('<span class="dim">no workers</span>'); return; }
+  if (!d.workers.length) { main.innerHTML = card('<span class="dim">no workers dispatched yet</span>'); return; }
   let h = '';
   for (const w of d.workers) {
-    let inner = '<div class="row"><h3>' + esc(w.id) + ' <span class="badge">' + esc(w.status) + '</span></h3><span class="dim">' + esc(w.project) + '</span></div>';
-    inner += '<pre>' + esc(w.purpose) + '</pre>';
-    if (w.threadId) inner += '<div class="dim">thread ' + esc(w.threadId) + '</div>';
-    if (w.latest) inner += '<div class="blk tool_result"><span class="tag">latest output</span><pre>' + esc(w.latest) + '</pre></div>';
+    let inner = '<div class="row"><h3>' + esc(w.id) + '</h3><span class="dim">single-shot</span></div>';
     for (const p of w.prompts) inner += '<div class="blk tool_use"><span class="tag">' + esc(p.kind) + ' · turn #' + p.turnId + '</span><pre>' + esc(p.prompt || '(none)') + '</pre></div>';
     h += card(inner);
   }

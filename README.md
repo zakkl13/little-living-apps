@@ -20,7 +20,7 @@ The cost story collapses to "the subscription."
         │ reply text (agent_message)                              │  reasoning = xhigh
         │                    ┌── Lila MCP tools (the only hands) ──┘  (loopback HTTP, bearer token)
         │                    │  memory_*  → MemFS (git markdown + sqlite FTS)
-        │                    │  subagent_* → Codex workers (async, parallel, scoped)
+        │                    │  subagent_start → Codex workers (single-shot, async, parallel, scoped)
         └────────────────────┤  an ordinary message IS the reply (NO_REPLY = stay silent)
                              └── workers operate the box: build & maintain the app at $WORKSPACE_DIR
 ```
@@ -28,8 +28,11 @@ The cost story collapses to "the subscription."
 The bot talks to Telegram by **outbound long-poll** — it opens no inbound port and needs no public
 URL or TLS, so it runs behind NAT, on a home box, or on a bare cloud VM. The manager has **no
 shell/file/network tools**: it runs in a **read-only sandbox with `shell_tool` and `web_search`
-off**, so its only hands are the **Lila MCP** tools (`memory_*`, `subagent_*`,
-`memory_search`/`recall_search`) served in-process over loopback HTTP. `view_image` stays on, so it
+off**, so its only hands are the **Lila MCP** tools (`memory_*`, `subagent_start`,
+`memory_search`/`recall_search`) served in-process over loopback HTTP. Workers are **purely
+ephemeral**: each `subagent_start` births a fresh Codex thread for one objective; it reports back
+once as an event and is gone — no roster, no resume, no steer. Continuity lives in the workspace,
+the git history, and memory, never in worker state. `view_image` stays on, so it
 can see owner-sent screenshots. Its plain agent message is delivered straight to Telegram; `NO_REPLY`
 lets it absorb an event silently. Workers have full access under standing rules
 (`provision/AGENTS.md`). Everything survives a restart: Codex owns the manager thread's rollout on
@@ -85,8 +88,8 @@ with `deploy/Caddyfile`.
 | `src/manager/backend.ts` · `mcp/` | Assembles AGENTS.md + the Lila MCP server + the driver. `mcp/tools.ts` is the manager's entire capability (memory + subagent tools); `mcp/server.ts` is the loopback bearer-guarded streamable-HTTP server. |
 | `src/manager/prompt.ts` | Splits the instructions: static persona/rules/host-facts/tools → `AGENTS.md`; volatile core memory + index → the per-turn context header. |
 | `src/memory/` | `memfs.ts` (markdown backend over `/memories`), `fts.ts` (sqlite FTS5), `git.ts` (commit-per-write), `block.ts`. |
-| `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (v3: thread id + queue + workers), `telemetry.ts`. |
-| `src/workers/` | `runner.ts` (`CodexRunner` over `@openai/codex-sdk`), `orchestrator.ts` (async `subagent_*`; steer = abort+resume), `registry.ts`, `summarize.ts`. |
+| `src/runtime/` | `eventQueue.ts`, `loop.ts` (one turn at a time), `snapshot.ts` (v4: thread id + queue), `telemetry.ts`. |
+| `src/workers/` | `runner.ts` (`CodexRunner` over `@openai/codex-sdk`; every run a fresh thread), `orchestrator.ts` (single-shot ephemeral workers: start → one event → gone), `summarize.ts`. |
 | `src/transport/` | `telegram.ts` (chunked Bot API client + `getUpdates`), `poller.ts` (outbound long-poll). |
 | `provision/` | `AGENTS.md` (worker standing rules), `memory-bank/` templates (seeded into the app repo). |
 | `test/` | Per-subsystem tests + the fake-driven **headline e2e**. |

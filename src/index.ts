@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     detail: auth.detail.split("\n")[0],
   });
 
-  app.restore(); // cold-restart recovery: transcript + queue + workers
+  app.restore(); // cold-restart recovery: manager thread id + queue + usage meter
   app.start();
 
   // Inspector: read-only observability plane (off by default). Bound to 127.0.0.1; Caddy fronts it
@@ -80,7 +80,6 @@ async function main(): Promise<void> {
       telemetry: app.telemetry,
       conversation: () => app.telemetry.conversation(),
       memories: () => app.mem.listAll(),
-      workers: () => app.orchestrator.registry.snapshot(),
       appFiles: openAppFiles(config.workspaceDir),
     });
   }

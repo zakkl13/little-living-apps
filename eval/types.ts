@@ -41,15 +41,15 @@ export const ALL_AXES: readonly Axis[] = [
 export type TimelineEvent =
   | { type: "owner_msg"; text: string }
   | { type: "delivery"; text: string }
-  | { type: "worker_call"; callId: number; prompt: string; resumeThreadId?: string }
+  | { type: "worker_call"; callId: number; prompt: string }
   | { type: "worker_note"; callId: number; note: string }
   | { type: "worker_done"; callId: number; ok: boolean; response: string };
 
 export type TimelineEntry = TimelineEvent & { seq: number; at: number };
 
 /** One real worker run, fully attributed: what it was told, what it said while working, what it
- *  reported, and the Codex thread identity (resume chains share a threadId). The unit a review UI
- *  renders as a worker lane. (Known gap: the Codex SDK does not report per-worker token usage.) */
+ *  reported. Workers are single-shot — every session is a fresh Codex thread, never resumed. The
+ *  unit a review UI renders as a worker lane. (Known gap: the SDK reports no per-worker tokens.) */
 export interface WorkerSession {
   /** Ordinal (1-based) dispatch id; timeline worker_* events reference it. */
   callId: number;
@@ -57,9 +57,7 @@ export interface WorkerSession {
   prompt: string;
   /** Exactly what the worker received (standing protocol + objective). */
   promptFull: string;
-  /** Set when the manager resumed an existing worker thread (steer / follow-up). */
-  resumeThreadId?: string;
-  /** The worker's Codex thread id (links resumes into one session chain). */
+  /** The single-use Codex thread id (trace artifact for forensics). */
   threadId?: string;
   /** Live progress lines the worker emitted while running. */
   notes: Array<{ at: number; note: string }>;

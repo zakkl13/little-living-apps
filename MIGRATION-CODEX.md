@@ -1,7 +1,13 @@
 # Migration: manager brain Opus → Codex/GPT (v0.3)
 
 Status: **IMPLEMENTED** (the Phase 0 spike was skipped — wiring proven directly in the real code +
-`test/mcp.test.ts`). This supersedes the Anthropic-backed manager described in DESIGN.md §4. Working
+`test/mcp.test.ts`).
+
+> **Superseded in part (2026-06): purely ephemeral workers.** After this migration shipped, the
+> worker tier was cut to single-shot: `subagent_start` is the only orchestration tool (`_send`,
+> `_steer`, `_cancel`, `_list` deleted along with the registry and the `system/workers.md` roster
+> mirror), and the snapshot is **v4** `{managerThreadId, queue, usage}` — no worker records.
+> References below to those tools, the roster mirror, and snapshot v3 are historical. This supersedes the Anthropic-backed manager described in DESIGN.md §4. Working
 rules from the project still apply: **rip out prior code (no compat shims), commit straight to
 `main`, the host is the security boundary, and the bot refuses to start if
 `OPENAI_API_KEY`/`CODEX_API_KEY` is set.**

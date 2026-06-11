@@ -1,8 +1,8 @@
 // Codex integration via the official @openai/codex-sdk threads API (SPEC §7).
 //
-// One Codex *thread* per Telegram chat. The thread id (from the `thread.started` event) is
-// persisted by the handler so follow-ups resume the same conversation. We stream events so the
-// handler can surface live progress to Telegram instead of a long silence.
+// Workers are purely ephemeral: every run() is a FRESH Codex thread that runs one objective and is
+// never resumed — there is no abort, no steer, no follow-up. We stream events so callers can record
+// live progress, and report the thread id only as a trace artifact (eval/Inspector forensics).
 //
 // Auth: we never pass `apiKey`, so the SDK rides the cached ChatGPT-subscription login in
 // CODEX_HOME (~/.codex/auth.json). Defense in depth: we strip OPENAI_API_KEY / CODEX_API_KEY
@@ -15,7 +15,7 @@ import { logger } from "../logger.js";
 
 export interface CodexTurn {
   ok: boolean;
-  /** Thread id for resuming this conversation (present once a turn has started). */
+  /** The (single-use) thread's id — a trace artifact for forensics, never used to resume. */
   threadId?: string;
   /** Final agent message, suitable for sending back to the user. */
   finalResponse: string;
@@ -25,12 +25,7 @@ export type ProgressFn = (note: string) => void;
 
 export interface CodexRunArgs {
   prompt: string;
-  resumeThreadId?: string;
   onProgress?: ProgressFn;
-  /** Abort the in-flight turn (drives subagent_steer = abort+resume, and subagent_cancel). */
-  signal?: AbortSignal;
-  /** Fired as soon as the thread id is known, so the orchestrator can resume/steer it later. */
-  onThreadId?: (id: string) => void;
 }
 
 export interface CodexRunner {
@@ -103,20 +98,17 @@ export function createCodexRunner(config: Config): CodexRunner {
   };
 
   return {
-    async run({ prompt, resumeThreadId, onProgress, signal, onThreadId }: CodexRunArgs): Promise<CodexTurn> {
-      const thread = resumeThreadId
-        ? codex.resumeThread(resumeThreadId, threadOptions)
-        : codex.startThread(threadOptions);
+    async run({ prompt, onProgress }: CodexRunArgs): Promise<CodexTurn> {
+      const thread = codex.startThread(threadOptions);
 
-      logger.debug("Codex turn", { resume: Boolean(resumeThreadId), cwd: config.workspaceDir });
+      logger.debug("Codex turn", { cwd: config.workspaceDir });
 
       // Hoisted out of the try so the catch below can prefer it: the Codex SDK throws on ANY non-zero
       // exit (including a clean turn.failed whose reason we already streamed), leaving only the
       // "Reading prompt from stdin..." banner on stderr — which would otherwise mask the real cause.
       let failure: string | undefined;
       try {
-        const { events } = await thread.runStreamed(prompt, signal ? { signal } : undefined);
-        if (thread.id && onThreadId) onThreadId(thread.id);
+        const { events } = await thread.runStreamed(prompt);
         const agentMessages: string[] = [];
 
         for await (const event of events) {
@@ -141,7 +133,7 @@ export function createCodexRunner(config: Config): CodexRunner {
           }
         }
 
-        const threadId = thread.id ?? resumeThreadId;
+        const threadId = thread.id ?? undefined;
         if (failure) return { ok: false, threadId, finalResponse: friendlyError(failure) };
 
         const finalResponse = agentMessages.join("\n\n").trim() || NO_OUTPUT;
@@ -149,7 +141,7 @@ export function createCodexRunner(config: Config): CodexRunner {
       } catch (err) {
         return {
           ok: false,
-          threadId: thread.id ?? resumeThreadId,
+          threadId: thread.id ?? undefined,
           finalResponse: friendlyError(failure ?? (err as Error).message),
         };
       }

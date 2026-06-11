@@ -6,8 +6,9 @@
 //
 // Atomic write (tmp + fsync + rename) so a crash mid-write can never corrupt the file.
 //
-// No-compat cutover: only v3 is read. The first start after the Opus→Codex deploy finds the old v2
-// file, ignores it, and begins a fresh manager thread seeded by persisted memory (§7 cutover note).
+// No-compat cutover: only v4 is read. v4 drops the worker roster — subagents are purely ephemeral
+// (single-shot), so there is nothing about them to recover: a run in flight at crash time is simply
+// gone, and its work sits in the workspace/git for a fresh worker to pick up.
 
 import {
   closeSync,
@@ -22,16 +23,14 @@ import {
 import { join } from "node:path";
 
 import type { ManagerEvent } from "./eventQueue.js";
-import type { WorkerSnapshot } from "../workers/registry.js";
 import type { UsageSnapshot } from "./telemetry.js";
 import { logger } from "../logger.js";
 
 export interface ManagerSnapshot {
-  version: 3;
+  version: 4;
   /** The Codex manager thread to resume on cold wake; absent before the first turn / after /new. */
   managerThreadId?: string;
   queue: ManagerEvent[];
-  workers: WorkerSnapshot[];
   /** Cumulative token-usage meter (lifetime totals survive a restart). */
   usage?: UsageSnapshot;
 }
@@ -63,17 +62,15 @@ export function openSnapshotStore(dir: string): SnapshotStore {
           version?: number;
           managerThreadId?: string;
           queue?: ManagerEvent[];
-          workers?: WorkerSnapshot[];
           usage?: UsageSnapshot;
         };
-        // We are the only writer; a v3 file carries both arrays. A missing field means it is
-        // corrupt/truncated, so ignore it. A pre-v3 (Opus) file is discarded — a fresh thread starts.
-        if (parsed.version === 3 && Array.isArray(parsed.queue) && Array.isArray(parsed.workers)) {
+        // We are the only writer; a v4 file carries the queue. A missing field means it is
+        // corrupt/truncated, so ignore it. A pre-v4 file is discarded — a fresh thread starts.
+        if (parsed.version === 4 && Array.isArray(parsed.queue)) {
           return {
-            version: 3,
+            version: 4,
             ...(parsed.managerThreadId ? { managerThreadId: parsed.managerThreadId } : {}),
             queue: parsed.queue as ManagerEvent[],
-            workers: parsed.workers as WorkerSnapshot[],
             ...(parsed.usage ? { usage: parsed.usage } : {}),
           };
         }

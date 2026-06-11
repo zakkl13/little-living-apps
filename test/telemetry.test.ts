@@ -48,14 +48,12 @@ describe("telemetry", () => {
     const t = createTelemetry();
     t.recordPrompt({ turnId: 4, workerId: "w1", kind: "start", prompt: "scope: src/api/**" });
     t.recordPrompt({ turnId: 4, workerId: "w2", kind: "start", prompt: "scope: test/**" });
-    t.recordPrompt({ turnId: 9, workerId: "w1", kind: "steer", prompt: "redirect" });
-    t.recordPrompt({ turnId: 9, workerId: "w1", kind: "cancel", prompt: "" });
+    t.recordPrompt({ turnId: 9, workerId: "w3", kind: "start", prompt: "validate the change" });
 
     assert.equal(t.prompts({ turnId: 4 }).length, 2, "two prompts traced to turn 4");
-    assert.equal(t.prompts({ workerId: "w1" }).length, 3);
+    assert.equal(t.prompts({ workerId: "w1" }).length, 1, "single-shot: one prompt per worker, ever");
     assert.equal(t.prompts({ workerId: "w1" })[0]!.prompt, "scope: src/api/**");
-    // cancel does not count as a codex turn (no run launched).
-    assert.equal(t.meter().codexTurns, 3);
+    assert.equal(t.meter().codexTurns, 3, "every launch is one codex turn");
   });
 
   it("evicts the oldest turns past the ring cap", () => {

@@ -227,12 +227,10 @@ async function drainToQuiescence(app: ManagerApp, deadline: number): Promise<voi
     await withDeadline(app.orchestrator.whenQuiet(), deadline, "worker");
     // A worker completion enqueues an event in a microtask window; give it a beat, then re-check.
     await sleep(30);
-    const busy =
-      app.queue.size() > 0 || app.orchestrator.list().some((w) => w.status === "running");
+    const busy = app.queue.size() > 0 || app.orchestrator.running() > 0;
     if (!busy) {
       await withDeadline(app.loop.whenIdle(), deadline, "manager turn");
-      const settled =
-        app.queue.size() === 0 && !app.orchestrator.list().some((w) => w.status === "running");
+      const settled = app.queue.size() === 0 && app.orchestrator.running() === 0;
       if (settled) return;
     }
   }

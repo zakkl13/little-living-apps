@@ -134,7 +134,7 @@ describe("ManagerDriver turn", () => {
         agentMessage("starting"),
         mcpCall("lila", "subagent_start"),
         agentMessage("still working"),
-        mcpCall("lila", "subagent_list"),
+        mcpCall("lila", "memory_view"),
         agentMessage("done"),
         turnCompleted(),
       ],

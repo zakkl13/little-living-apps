@@ -136,7 +136,7 @@ describe("e2e: transport guards", () => {
     const bot = await boot();
     bot.sendUpdate(messageUpdate("/status"));
     await bot.telegram.waitFor(() => bot.telegram.sent.length >= 1);
-    assert.match(bot.telegram.sent[0]!.text, /Workers:/);
+    assert.match(bot.telegram.sent[0]!.text, /Workers running:/);
     assert.equal(bot.manager.turns, 0);
   });
 });

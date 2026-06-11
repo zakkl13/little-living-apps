@@ -49,7 +49,6 @@ function inspectorFor(bot: TestBot): InspectorServer {
     telemetry: bot.app.telemetry,
     conversation: () => bot.app.telemetry.conversation(),
     memories: () => bot.app.mem.listAll(),
-    workers: () => bot.app.orchestrator.registry.snapshot(),
     appFiles: openAppFiles(bot.config.workspaceDir),
   });
   servers.push(server);
@@ -103,15 +102,15 @@ describe("inspector (read-only observability plane)", () => {
     assert.ok(startPrompt, "a start prompt was traced");
     assert.match(startPrompt.prompt, /src\/api/);
 
-    // Workers: the live worker, joined with the prompt it received.
+    // Workers: the dispatch history (single-shot workers, each with the prompt it received).
     const workersData = await get("/api/workers");
     assert.equal(workersData.workers.length, 1);
     assert.ok(workersData.workers[0].prompts.length >= 1);
 
-    // Memories: real MemFS files, including the mirrored worker roster.
+    // Memories: real MemFS files. No roster mirror — workers are ephemeral, nothing is tracked.
     const memData = await get("/api/memories");
     const paths = memData.files.map((f: any) => f.path);
-    assert.ok(paths.includes("system/workers.md"), "worker roster mirrored into memory");
+    assert.ok(!paths.includes("system/workers.md"), "no worker roster in memory");
     assert.ok(paths.some((p: string) => p.startsWith("system/")), "system memory present");
 
     // Usage: per-turn token series present.

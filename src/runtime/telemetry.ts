@@ -14,7 +14,7 @@ import type { ManagerEvent } from "./eventQueue.js";
 import type { ConvMessage } from "../manager/driver.js";
 
 export type TurnKind = ManagerEvent["kind"];
-export type PromptKind = "start" | "send" | "steer" | "cancel";
+export type PromptKind = "start";
 
 /** The four token counters Codex reports for a turn (turn.completed.usage). cached/reasoning are
  *  optional at the call site so a partial usage still records cleanly. */
@@ -171,7 +171,7 @@ export function createTelemetry(opts: TelemetryOptions = {}): Telemetry {
     },
 
     recordPrompt(rec) {
-      if (rec.kind !== "cancel") codexTurns += 1;
+      codexTurns += 1;
       promptLog.push({ ...rec, ts: Date.now() });
       if (promptLog.length > maxPrompts) promptLog.splice(0, promptLog.length - maxPrompts);
     },

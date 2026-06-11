@@ -42,24 +42,14 @@ export function instrumentWorkers(
         callId,
         prompt,
         promptFull: args.prompt,
-        ...(args.resumeThreadId ? { resumeThreadId: args.resumeThreadId } : {}),
         notes: [],
         startedAt: Date.now(),
       };
       sessions.push(session);
-      record({
-        type: "worker_call",
-        callId,
-        prompt,
-        ...(args.resumeThreadId ? { resumeThreadId: args.resumeThreadId } : {}),
-      });
+      record({ type: "worker_call", callId, prompt });
 
       const turn = await inner.run({
         ...args,
-        onThreadId: (id) => {
-          session.threadId = id;
-          args.onThreadId?.(id);
-        },
         onProgress: (note) => {
           session.notes.push({ at: Date.now(), note });
           record({ type: "worker_note", callId, note });

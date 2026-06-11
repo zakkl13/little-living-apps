@@ -23,7 +23,11 @@ export interface OwnerMessageEvent {
 export interface WorkerEvent {
   kind: "worker_event";
   id: string;
+  /** Telemetry/trace correlation only — workers are ephemeral, so the manager never addresses one. */
   workerId: string;
+  /** The objective the worker was started on; the manager-visible event text leads with its first
+   *  line so the event is self-describing (there is no roster to look an id up in). */
+  objective: string;
   status: "completed" | "failed";
   summary: string;
 }

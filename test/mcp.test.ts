@@ -1,7 +1,8 @@
 // The Lila MCP server (MIGRATION-CODEX.md §5). Two layers:
 //   1. The tool handlers (lilaTools) against a REAL MemFs + a fake Orchestrator — memory ops land on
-//      disk and are searchable, errors surface as is_error, and subagent_* calls reach the
-//      orchestrator with their prompts traced to the active turn.
+//      disk and are searchable, errors surface as is_error, and subagent_start (the only
+//      orchestration tool — workers are single-shot) reaches the orchestrator with its prompt
+//      traced to the active turn.
 //   2. The HTTP envelope (startLilaMcpServer): bearer-token gating on the loopback transport.
 
 import { strict as assert } from "node:assert";
@@ -16,7 +17,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { openMemFs, type MemFs } from "../src/memory/memfs.js";
 import { lilaTools, type LilaTool } from "../src/manager/mcp/tools.js";
 import { startLilaMcpServer, type LilaMcpServer } from "../src/manager/mcp/server.js";
-import type { Orchestrator, PromptRecorder, WorkerInfo } from "../src/workers/types.js";
+import type { Orchestrator, PromptRecorder } from "../src/workers/types.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -32,21 +33,13 @@ function freshMem(): MemFs {
 function fakeOrchestrator(): { orch: Orchestrator; started: Array<{ objective: string; project?: string }> } {
   const started: Array<{ objective: string; project?: string }> = [];
   let n = 0;
-  const info = (id: string, purpose: string, project = "/srv/app"): WorkerInfo => ({
-    id,
-    purpose,
-    status: "running",
-    project,
-  });
   const orch: Orchestrator = {
     start: (objective, project) => {
       started.push({ objective, ...(project ? { project } : {}) });
-      return info(`w${++n}`, objective, project);
+      return { id: `w${++n}` };
     },
-    send: (id) => info(id, "follow-up", "/srv/app"),
-    steer: (id) => info(id, "steered", "/srv/app"),
-    cancel: (id) => ({ ...info(id, "x"), status: "canceled" }),
-    list: () => [],
+    running: () => 0,
+    whenQuiet: async () => {},
   };
   return { orch, started };
 }
@@ -102,11 +95,17 @@ describe("Lila MCP tools — orchestration", () => {
 
     turn = 42;
     const res = await tools.get("subagent_start")!.handler({ objective: "work only within src/api/**", project: "proj" });
-    assert.match(textOf(res), /started worker w1/);
+    assert.match(textOf(res), /subagent started/);
     assert.deepEqual(started, [{ objective: "work only within src/api/**", project: "proj" }]);
     assert.deepEqual(prompts, [
       { turnId: 42, workerId: "w1", kind: "start", prompt: "work only within src/api/**" },
     ]);
+  });
+
+  it("exposes NO worker-tracking tools — subagent_start is the only orchestration surface", () => {
+    const tools = toolMap({ mem: freshMem(), orchestrator: fakeOrchestrator().orch, currentTurnId: () => 0 });
+    const orchestrationNames = [...tools.keys()].filter((n) => n.startsWith("subagent_"));
+    assert.deepEqual(orchestrationNames, ["subagent_start"]);
   });
 });
 

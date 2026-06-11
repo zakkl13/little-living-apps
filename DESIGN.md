@@ -1,5 +1,12 @@
 # DESIGN.md — Agent-Manager over Codex Workers (v0.2)
 
+> **Worker-model update (2026-06, post-v0.3).** Workers are now **purely ephemeral**: the only
+> orchestration tool is `subagent_start` — each call births a fresh single-shot Codex thread that
+> reports back once as a `worker_event` and is gone. Everything in this document about
+> `subagent_send`/`_steer`/`_cancel`/`_list`, the worker registry, the `system/workers.md` roster
+> mirror, worker snapshots, and resume-after-restart is **deleted**, not just deprecated.
+> Continuity lives in the workspace, the git history, and memory — never in worker state.
+
 > **Substrate update (host-native migration, see `MIGRATION.md`).** This document predates the move
 > off the Fly Sprite. The manager loop, memory, worker orchestration, and durability described here
 > are unchanged and current. What changed: the bot now runs on a **plain always-on Linux VM** (not a
