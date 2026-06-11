@@ -197,16 +197,6 @@ export function lilaTools(deps: LilaToolDeps): LilaTool[] {
       }),
     },
     {
-      name: "subagent_poll",
-      description: "Get a worker's status and latest condensed output.",
-      inputSchema: { id: z.string() },
-      handler: guard((a) => {
-        const r = orch.poll(String(a.id));
-        if (!r) return fail(`no such worker: ${String(a.id)}`);
-        return ok(`${r.info.id} [${r.info.status}]\n${r.latest ?? "(no output yet)"}`);
-      }),
-    },
-    {
       name: "subagent_list",
       description: "List active workers.",
       inputSchema: {},

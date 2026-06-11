@@ -21,8 +21,6 @@ export interface Orchestrator {
   steer(id: string, guidance: string): WorkerInfo;
   /** Abort a worker's run without resuming. */
   cancel(id: string): WorkerInfo;
-  /** Status + latest condensed output for one worker. */
-  poll(id: string): { info: WorkerInfo; latest?: string } | undefined;
   /** All known workers (mirrors system/workers.md). */
   list(): WorkerInfo[];
 }

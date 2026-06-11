@@ -74,8 +74,8 @@ export function createWorkerRegistry(): WorkerRegistry {
           id: rec.id,
           purpose: rec.purpose,
           project: rec.project,
-          // A worker that was "running" before the crash has no live run now → treat as idle and
-          // reconcilable via subagent_poll (the codex thread persists server-side).
+          // A worker that was "running" before the crash has no live run now → treat as idle; the
+          // manager can resume it with subagent_send (the codex thread persists server-side).
           status: rec.status === "running" ? "idle" : rec.status,
           ...(rec.threadId ? { threadId: rec.threadId } : {}),
           ...(rec.latest ? { latest: rec.latest } : {}),

@@ -46,7 +46,6 @@ function fakeOrchestrator(): { orch: Orchestrator; started: Array<{ objective: s
     send: (id) => info(id, "follow-up", "/srv/app"),
     steer: (id) => info(id, "steered", "/srv/app"),
     cancel: (id) => ({ ...info(id, "x"), status: "canceled" }),
-    poll: (id) => (id === "w1" ? { info: info("w1", "scope"), latest: "halfway done" } : undefined),
     list: () => [],
   };
   return { orch, started };
@@ -108,14 +107,6 @@ describe("Lila MCP tools — orchestration", () => {
     assert.deepEqual(prompts, [
       { turnId: 42, workerId: "w1", kind: "start", prompt: "work only within src/api/**" },
     ]);
-  });
-
-  it("subagent_poll on an unknown worker is an is_error", async () => {
-    const mem = freshMem();
-    const tools = toolMap({ mem, orchestrator: fakeOrchestrator().orch, currentTurnId: () => 0 });
-    const res = await tools.get("subagent_poll")!.handler({ id: "w999" });
-    assert.equal(res.isError, true);
-    assert.match(textOf(res), /no such worker/);
   });
 });
 

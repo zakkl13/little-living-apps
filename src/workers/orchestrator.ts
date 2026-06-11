@@ -66,8 +66,8 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
           const r = registry.get(id);
           if (r) r.threadId = tid;
         },
-        // Surface live progress to subagent_poll while the run is in flight; the final summary
-        // overwrites it on settle.
+        // Record the worker's latest line while the run is in flight; the final summary overwrites
+        // it on settle. Kept as a hook for a future status surface (e.g. a richer subagent_list).
         onProgress: (note) => {
           const r = registry.get(id);
           if (r) r.latest = note;
@@ -148,12 +148,6 @@ export function createOrchestrator(deps: OrchestratorDeps): WorkerOrchestrator {
       old?.abort();
       mirror();
       return registry.info(id)!;
-    },
-
-    poll(id) {
-      const info = registry.info(id);
-      if (!info) return undefined;
-      return { info, ...(registry.get(id)!.latest ? { latest: registry.get(id)!.latest } : {}) };
     },
 
     list: () => registry.infos(),

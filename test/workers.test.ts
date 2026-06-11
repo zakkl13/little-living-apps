@@ -103,15 +103,14 @@ describe("worker orchestrator (async lifecycle)", () => {
     assert.equal(runner.calls[1]!.resumeThreadId, orch.registry.get(info.id)!.threadId);
   });
 
-  it("poll and list reflect worker state", async () => {
+  it("list reflects worker state after a run settles", async () => {
     const { orch } = harness();
     const a = orch.start("alpha", "p1");
     await orch.whenQuiet();
-    const polled = orch.poll(a.id);
-    assert.equal(polled!.info.status, "idle");
-    assert.match(polled!.latest!, /alpha/);
-    assert.equal(orch.list().length, 1);
-    assert.equal(orch.poll("nope"), undefined);
+    const listed = orch.list();
+    assert.equal(listed.length, 1);
+    const worker = listed.find((w) => w.id === a.id)!;
+    assert.equal(worker.status, "idle");
   });
 });
 

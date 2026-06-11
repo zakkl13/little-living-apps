@@ -185,8 +185,7 @@ A worker = a Codex thread driven by our existing `CodexRunner` (`@openai/codex-s
 | `subagent_start(objective, project)` | `startThread({ workingDirectory: <project>, sandboxMode: danger-full-access })`; run async; register w/ an `AbortController`; return worker id (= thread id) |
 | `subagent_send(id, message)` | `resumeThread(id).run(...)` async (used when the worker is idle) |
 | `subagent_steer(id, guidance)` | **abort the in-flight run, then `resumeThread(id).run(guidance)`** — redirect a busy worker without losing thread context (see below) |
-| `subagent_poll(id)` | status + latest condensed output (for long-running workers) |
-| `subagent_list()` | active workers (also mirrored in `system/workers.md`) |
+| `subagent_list()` | active workers + status (also mirrored in `system/workers.md`) |
 | `subagent_cancel(id)` | abort the run, do not resume |
 
 - **Steering semantics (`subagent_steer`).** The Codex *app-server protocol* has true mid-turn
@@ -253,7 +252,7 @@ no longer runs Codex — it **enqueues an `owner_message` event** and 200s immed
 
 | Group | Tools |
 |---|---|
-| **Worker orchestration** | `subagent_start`, `subagent_send`, `subagent_steer`, `subagent_poll`, `subagent_list`, `subagent_cancel` |
+| **Worker orchestration** | `subagent_start`, `subagent_send`, `subagent_steer`, `subagent_list`, `subagent_cancel` |
 | **Memory** | `memory` (native `memory_20250818` — CRUD over `/memories`, MemFS-backed) + our `memory_search`, `recall_search` |
 | **Owner comms** | *(none — the manager's plain `text` is its reply; `NO_REPLY` stays silent. §4)* |
 
@@ -283,7 +282,7 @@ raw file contents or full logs into the manager's context — summaries and poin
 | Core/archival/recall memory | `MEMORY_DIR` (git markdown) + FTS db | load `system/`; FTS reindex if stale |
 | Working transcript (incl. server `compaction` blocks) | `MANAGER_STATE_DIR/transcript.json` | rehydrate verbatim — compaction blocks must be preserved |
 | Event queue (pending) | `MANAGER_STATE_DIR/queue.json` | resume draining |
-| Worker registry (ids, purpose, status) | `system/workers.md` (+ snapshot) | reconcile via `subagent_poll` (threads persist) |
+| Worker registry (ids, purpose, status) | `system/workers.md` (+ snapshot) | reconcile via `subagent_send` (threads persist) |
 
 Snapshots are written **after every turn** (cheap, small), so a hibernate mid-conversation loses
 nothing. Memory is the *semantic* truth; snapshots are crash recovery.
