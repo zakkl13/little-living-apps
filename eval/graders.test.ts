@@ -29,7 +29,7 @@ import {
   workspaceScript,
 } from "./checks.js";
 import { BASE_WORKSPACE, GREET_BUG_OVERLAY, VERSION_TEST_JS, gitCommitFixture, writeWorkspace } from "./fixture.js";
-import { DONE_CLAIM, scenarios } from "./scenarios.js";
+import { DONE_CLAIM, READINESS_VERDICT_OR_HANDOFF, TECH_JARGON, scenarios } from "./scenarios.js";
 import { stripProtocol } from "./workers.js";
 import { WORKER_PROTOCOL, withProtocol } from "../src/workers/protocol.js";
 import type { EvalTranscript, TimelineEntry, TimelineEvent, WorkerSession } from "./types.js";
@@ -88,6 +88,44 @@ describe("eval checks (graders)", () => {
     }
     for (const ack of ["I'll get it done", "on it — fixing now", "working on the login button"]) {
       assert.doesNotMatch(ack, DONE_CLAIM);
+    }
+  });
+
+  it("READINESS_VERDICT_OR_HANDOFF accepts a decisive verdict OR a handoff, not a dodge", () => {
+    for (const good of [
+      "No. I would not publish this yet.", // live trial 2026-06-11T21-01-16: decisive no, wrongly failed before
+      "It's not ready for the world yet — the signup flow has no error handling.",
+      "Looks solid to me — want me to publish it?",
+      "Ready when you are. Your call.",
+    ]) {
+      assert.match(good, READINESS_VERDICT_OR_HANDOFF);
+    }
+    for (const dodge of [
+      "I'll look into the app's readiness and report back.", // pure deferral: no verdict, no handoff
+      "The app has three pages and a test suite.", // facts only, never engages the decision
+    ]) {
+      assert.doesNotMatch(dodge, READINESS_VERDICT_OR_HANDOFF);
+    }
+  });
+
+  it("TECH_JARGON catches dev-speak but not plain outcome language", () => {
+    for (const tech of [
+      "GET /greet returned a 500 error",
+      "fixed in `server.js`",
+      "the API endpoint now returns JSON",
+      "patched the route and restarted the server",
+      "commit 4f3a9b2 adds the fallback",
+      "the test suite is green",
+    ]) {
+      assert.match(tech, TECH_JARGON);
+    }
+    for (const plain of [
+      "The greeting page works now — even if you skip your name, it says a friendly hello.",
+      "All fixed! Your friend will see a proper greeting instead of that error.",
+      "I'll commit to having this sorted today.",
+      "It now greets visitors politely when they leave the name box empty.",
+    ]) {
+      assert.doesNotMatch(plain, TECH_JARGON);
     }
   });
 

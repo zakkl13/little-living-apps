@@ -125,7 +125,7 @@ Scenarios are tagged with the behavior they exercise — these mirror the person
 |---|---|
 | `delegation` | hands real work to subagents, scopes them, acks and lets go |
 | `validation` | independently verifies user-visible work (separate validator, PASS/FAIL) before claiming done |
-| `reply-discipline` | NO_REPLY on noise events, no narration, one outcome report, no shop talk |
+| `reply-discipline` | NO_REPLY on noise events, no narration, one outcome report, no shop talk, matches the owner's technical register |
 | `memory` | writes durable facts down; answers from memory instead of guessing or re-delegating |
 
 The memory axis includes **`long-horizon-build`**, the suite's one marathon: 10 owner turns
@@ -186,7 +186,7 @@ trip a completion-claim check; that's unit-tested).
 - **Full production parity, no fidelity knobs.** Real manager thread, real workers via the
   production runner (instrumented only to record the timeline), prod effort/model/sandbox. The
   manager⇄worker interplay is the thing under test — faking either side voids the measurement.
-- **Small, sharp suite** (11 scenarios) drawn from persona-mandated behaviors, not hundreds of
+- **Small, sharp suite** (12 scenarios) drawn from persona-mandated behaviors, not hundreds of
   synthetic cases. When the live bot misbehaves on the host, distill that transcript into a new
   scenario — real failures are the best eval cases.
 - **Grade outcomes and state, not tool paths.** What the owner saw, what landed in memory, what the

@@ -21,10 +21,12 @@ export const WORKER_PROTOCOL = [
   "[Manager protocol — applies every turn; read this before you start]",
   "- Your manager cannot see your transcript, your tool output, or your files. The ONLY thing it",
   "  receives back from you is the summary block described below — so everything it needs must be there.",
-  `- End your reply with a section that begins with the exact line "${MANAGER_SUMMARY_MARKER}", followed`,
-  "  by a tight report in 150 words or less: what you did, which files changed, any commit, and concrete",
-  "  verification (HTTP status codes, test results, command output). Write normally above it — only this",
-  "  block is relayed, so do not pad it and do not rely on anything outside it reaching the manager.",
+  `- End your reply with a section that begins with the exact line "${MANAGER_SUMMARY_MARKER}". Its`,
+  "  FIRST line must be the outcome on its own: PASS or FAIL for a validation task, otherwise done or",
+  "  blocked plus one clause. Then a tight report in 150 words or less: what you did, which files",
+  "  changed, any commit, and concrete verification (HTTP status codes, test results, command output).",
+  "  Write normally above it — only this block is relayed, and if it runs long it is clipped from the",
+  "  end, so the verdict goes first and nothing outside the block reaches the manager.",
   "- Check `git status --short` before editing. Do not modify unrelated dirty files. If a file you",
   "  need to edit is already dirty, inspect the diff first and work with it deliberately; report that",
   "  context in your summary.",
@@ -46,7 +48,13 @@ export function extractManagerSummary(output: string): string {
   const idx = output.lastIndexOf(MANAGER_SUMMARY_MARKER);
   if (idx !== -1) {
     const block = output.slice(idx + MANAGER_SUMMARY_MARKER.length).trim();
-    return block.length <= SUMMARY_CEILING ? block : block.slice(0, SUMMARY_CEILING) + "\n…(clipped)";
+    if (block.length <= SUMMARY_CEILING) return block;
+    // Over-ceiling: keep BOTH ends. The protocol mandates a verdict-first block (head), but a
+    // non-compliant worker's conclusion lives at the tail — losing either once cost a whole
+    // resume round-trip just to re-ask for the verdict.
+    const head = block.slice(0, SUMMARY_CEILING - 400);
+    const tail = block.slice(block.length - 380);
+    return `${head}\n…(clipped)…\n${tail}`;
   }
   const trimmed = output.trim();
   if (trimmed.length <= SUMMARY_CEILING) return trimmed;
