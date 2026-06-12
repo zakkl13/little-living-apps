@@ -57,12 +57,13 @@ ENV_FILE="/etc/lila/$NAME.env"
 APP_PORT="${APP_PORT:-}"
 INSPECTOR_PORT="${INSPECTOR_PORT:-}"
 LILA_DOMAIN="${LILA_DOMAIN:-}"
-inherit ALLOWED_USER_IDS
-inherit INSPECTOR_TOKEN
+inherit ALLOWED_USER_IDS  # same human owns every instance; the bot token is what differs
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || die "TELEGRAM_BOT_TOKEN is required (create a NEW bot via @BotFather — each instance is its own bot)."
 [[ -n "${ALLOWED_USER_IDS:-}" ]] || die "ALLOWED_USER_IDS is required (not set, and none found in $PRIMARY_ENV)."
 [[ -n "$APP_PORT" ]] || die "APP_PORT is required (pick a free port, e.g. 3001)."
 [[ -n "$INSPECTOR_PORT" ]] || die "INSPECTOR_PORT is required (pick a free port, e.g. 9091)."
+# A FRESH per-instance inspector token (never shared with the primary or other instances). Pass
+# INSPECTOR_TOKEN explicitly only if you have a reason to pin it.
 INSPECTOR_TOKEN="${INSPECTOR_TOKEN:-$(head -c 24 /dev/urandom | xxd -p | tr -d '\n')}"
 APP_PUBLIC_URL="${APP_PUBLIC_URL:-${LILA_DOMAIN:+https://$LILA_DOMAIN}}"
 
