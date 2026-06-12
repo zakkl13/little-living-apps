@@ -17,7 +17,6 @@ import {
   firstDeliveryNot,
   httpProbe,
   inTurnWindow,
-  looksLikeValidation,
   noDeliveryUntil,
   noShopTalk,
   parallelStartsInFirstTurn,
@@ -29,9 +28,9 @@ import {
   workspaceScript,
 } from "./checks.js";
 import { BASE_WORKSPACE, GREET_BUG_OVERLAY, VERSION_TEST_JS, gitCommitFixture, writeWorkspace } from "./fixture.js";
-import { DONE_CLAIM, READINESS_VERDICT_OR_HANDOFF, TECH_JARGON, scenarios } from "./scenarios.js";
+import { DONE_CLAIM, READINESS_VERDICT_OR_HANDOFF, TECH_JARGON, VERIFICATION_EVIDENCE, scenarios } from "./scenarios.js";
 import { stripProtocol } from "./workers.js";
-import { WORKER_PROTOCOL, withProtocol } from "../src/workers/protocol.js";
+import { withProtocol } from "../src/workers/protocol.js";
 import type { EvalTranscript, TimelineEntry, TimelineEvent, WorkerSession } from "./types.js";
 
 // ---- synthetic transcript helper ------------------------------------------------
@@ -191,12 +190,11 @@ describe("eval checks (graders)", () => {
     assert.equal(check.run(bloated).pass, false);
   });
 
-  it("looksLikeValidation matches verification objectives, not builder ones (post-strip)", () => {
-    assert.equal(looksLikeValidation("Verify the login button works; report PASS or FAIL"), true);
-    assert.equal(looksLikeValidation("Add a /health endpoint and commit"), false);
-    // The raw protocol preamble mentions "verification" — stripProtocol must remove it first.
-    assert.equal(looksLikeValidation(WORKER_PROTOCOL), true, "unstripped protocol would poison this check");
-    assert.equal(looksLikeValidation(stripProtocol(withProtocol("Add a /health endpoint"))), false);
+  it("VERIFICATION_EVIDENCE matches exercised-and-proven reports, not bare claims", () => {
+    assert.match("done — GET /greet now returns 200; screenshot at /tmp/lila-shots/greet.png", VERIFICATION_EVIDENCE);
+    assert.match("done — verified the form submits via Playwright", VERIFICATION_EVIDENCE);
+    assert.doesNotMatch("done — rewrote the handler, looks right to me", VERIFICATION_EVIDENCE);
+    assert.doesNotMatch("blocked — could not install the gem", VERIFICATION_EVIDENCE);
   });
 
   it("inTurnWindow scopes assertions to the events after the nth owner message", () => {

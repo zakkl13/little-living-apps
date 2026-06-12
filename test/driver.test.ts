@@ -94,7 +94,7 @@ function makeFakeFactory(turns: Array<(input: Input) => ThreadEvent[]>): {
 }
 
 interface Harness {
-  sent: Array<{ chatId: number; text: string }>;
+  sent: Array<{ chatId: number; text: string; attachments: string[] }>;
   usages: ManagerUsage[];
   conversation: ConvMessage[];
 }
@@ -104,8 +104,8 @@ function driverWith(turns: Array<(input: Input) => ThreadEvent[]>, header = "HEA
   const h: Harness = { sent: [], usages: [], conversation: [] };
   const driver = createManagerDriver({
     factory,
-    deliver: async (chatId, text) => {
-      h.sent.push({ chatId, text });
+    deliver: async (chatId, text, attachments = []) => {
+      h.sent.push({ chatId, text, attachments });
     },
     buildContextHeader: () => header,
   });
@@ -125,7 +125,7 @@ describe("ManagerDriver turn", () => {
   it("delivers the agent_message to the owner", async () => {
     const { h, run } = driverWith([() => [agentMessage("on it 👍"), turnCompleted()]]);
     await run({ text: "build me a thing" });
-    assert.deepEqual(h.sent, [{ chatId: 7, text: "on it 👍" }]);
+    assert.deepEqual(h.sent, [{ chatId: 7, text: "on it 👍", attachments: [] }]);
   });
 
   it("delivers only the final agent_message from a streamed turn", async () => {
@@ -140,7 +140,7 @@ describe("ManagerDriver turn", () => {
       ],
     ]);
     await run({ text: "build me a thing" });
-    assert.deepEqual(h.sent, [{ chatId: 7, text: "done" }]);
+    assert.deepEqual(h.sent, [{ chatId: 7, text: "done", attachments: [] }]);
   });
 
   it("records but does not deliver when the host delivery gate is closed", async () => {
@@ -165,6 +165,41 @@ describe("ManagerDriver turn", () => {
     await run({ text: "kick it off" });
     await run({ text: "worker event" });
     assert.equal(h.sent.length, 0, "NO_REPLY suppresses the whole message");
+  });
+
+  it("strips ATTACH lines into attachments and keeps them out of the owner text", async () => {
+    const { h, run } = driverWith([
+      () => [
+        agentMessage(
+          "The new checkout page is live — here's how it looks.\n" +
+            "ATTACH: /tmp/lila-shots/checkout.png\n" +
+            "ATTACH: /tmp/lila-shots/confirm.png",
+        ),
+        turnCompleted(),
+      ],
+    ]);
+    await run({ text: "report" });
+    assert.deepEqual(h.sent, [
+      {
+        chatId: 7,
+        text: "The new checkout page is live — here's how it looks.",
+        attachments: ["/tmp/lila-shots/checkout.png", "/tmp/lila-shots/confirm.png"],
+      },
+    ]);
+  });
+
+  it("delivers an attachment-only message (empty text, photos carry the report)", async () => {
+    const { h, run } = driverWith([() => [agentMessage("ATTACH: /tmp/lila-shots/home.png"), turnCompleted()]]);
+    await run({ text: "show me" });
+    assert.deepEqual(h.sent, [{ chatId: 7, text: "", attachments: ["/tmp/lila-shots/home.png"] }]);
+  });
+
+  it("NO_REPLY suppresses attachments along with the text", async () => {
+    const { h, run } = driverWith([
+      () => [agentMessage("NO_REPLY\nATTACH: /tmp/lila-shots/internal.png"), turnCompleted()],
+    ]);
+    await run({ text: "worker event" });
+    assert.deepEqual(h.sent, []);
   });
 
   it("never delivers reasoning, only the agent_message alongside it", async () => {

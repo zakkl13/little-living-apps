@@ -6,7 +6,7 @@
 // everything real except the model itself. The ManagerDriver against a *real* fake thread is tested
 // separately in driver.test.ts.
 
-import { applyNoReply, type ConvMessage, type DeliverFn, type ManagerDriver, type ManagerUsage, type TurnInput } from "../../src/manager/driver.js";
+import { applyNoReply, extractAttachments, type ConvMessage, type DeliverFn, type ManagerDriver, type ManagerUsage, type TurnInput } from "../../src/manager/driver.js";
 import type { ManagerBackend, ManagerBackendCtx, ManagerBackendFactory } from "../../src/manager/backend.js";
 import { lilaTools } from "../../src/manager/mcp/tools.js";
 import type { MemFs } from "../../src/memory/memfs.js";
@@ -95,7 +95,10 @@ export function makeFakeManager(initial: ManagerStep[] = []): FakeManager {
           async say(text) {
             opts?.onConversation?.({ role: "assistant", content: [{ type: "text", text }] });
             const reply = applyNoReply(text);
-            if (reply && (opts?.allowReply?.() ?? true)) await deliver(chatId, reply);
+            if (reply && (opts?.allowReply?.() ?? true)) {
+              const { text: body, attachments } = extractAttachments(reply);
+              await deliver(chatId, body, attachments);
+            }
           },
           async call(tool, args = {}) {
             const t = toolByName.get(tool);

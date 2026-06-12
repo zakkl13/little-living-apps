@@ -1,7 +1,7 @@
-// In-process fake of the Telegram Bot API. Records outbound calls (sendMessage/editMessageText) so
-// tests can assert what the user would have received, and serves getUpdates as a real long-poll:
-// tests inject inbound updates via pushUpdate() and the bot's poller pulls them out of band. No
-// real Telegram involved.
+// In-process fake of the Telegram Bot API. Records outbound calls (sendMessage/sendPhoto/
+// editMessageText) so tests can assert what the user would have received, and serves getUpdates as
+// a real long-poll: tests inject inbound updates via pushUpdate() and the bot's poller pulls them
+// out of band. No real Telegram involved.
 
 import { createServer, type Server, type ServerResponse } from "node:http";
 
@@ -19,11 +19,19 @@ export interface EditedMessage {
   text: string;
 }
 
+export interface SentPhoto {
+  chatId: number;
+  messageId: number;
+  filename: string;
+  caption?: string;
+}
+
 export interface FakeTelegram {
   baseUrl: string;
   port: number;
   sent: SentMessage[];
   edits: EditedMessage[];
+  photos: SentPhoto[];
   /** Inject an inbound update the bot's poller will fetch via getUpdates. */
   pushUpdate(update: TelegramUpdate): void;
   /** Resolves once `predicate` is true or rejects after `timeoutMs`. */
@@ -40,6 +48,7 @@ interface Waiter {
 export async function startFakeTelegram(token = "test-token"): Promise<FakeTelegram> {
   const sent: SentMessage[] = [];
   const edits: EditedMessage[] = [];
+  const photos: SentPhoto[] = [];
   let inbound: TelegramUpdate[] = []; // unconfirmed updates awaiting getUpdates
   let waiters: Waiter[] = []; // long-poll requests parked until a push or timeout
   let messageSeq = 0;
@@ -77,6 +86,21 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
           text: String(payload.text ?? ""),
         });
         return ok(res, { message_id: messageSeq, text: payload.text });
+      }
+      if (method === "sendPhoto") {
+        // sendPhoto arrives as multipart/form-data (the bytes ride as a file part); pull the fields
+        // out of the raw body with regexes rather than a full multipart parser.
+        messageSeq += 1;
+        const field = (name: string): string | undefined =>
+          new RegExp(`name="${name}"\\r?\\n\\r?\\n([^\\r\\n]+)`).exec(body)?.[1];
+        const caption = field("caption");
+        photos.push({
+          chatId: Number(field("chat_id") ?? NaN),
+          messageId: messageSeq,
+          filename: /name="photo"; filename="([^"]+)"/.exec(body)?.[1] ?? "",
+          ...(caption !== undefined ? { caption } : {}),
+        });
+        return ok(res, { message_id: messageSeq });
       }
       if (method === "editMessageText") {
         edits.push({
@@ -130,6 +154,7 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
     port,
     sent,
     edits,
+    photos,
     pushUpdate(update) {
       inbound.push(update);
       wakeWaiters();
@@ -146,6 +171,7 @@ export async function startFakeTelegram(token = "test-token"): Promise<FakeTeleg
     reset() {
       sent.length = 0;
       edits.length = 0;
+      photos.length = 0;
       inbound = [];
     },
     close: () =>

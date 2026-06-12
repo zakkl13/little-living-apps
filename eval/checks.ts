@@ -190,14 +190,6 @@ export const workspaceFileMatches = (rel: string, re: RegExp, name = `${rel} mat
 
 // ---- workers ------------------------------------------------------------------
 
-/** Heuristic: does this dispatched objective read like a validation/verification one? (Applied to
- *  protocol-stripped prompts — the manager's own words.) */
-export function looksLikeValidation(prompt: string): boolean {
-  return /\b(verif\w*|validat\w*|PASS or FAIL|screenshots?|confirm (?:that|the)|check (?:that|whether))\b/i.test(
-    prompt,
-  );
-}
-
 export const workersAtLeast = (n: number): Check => ({
   name: `dispatched ≥${n} worker run(s)`,
   run: (t) =>

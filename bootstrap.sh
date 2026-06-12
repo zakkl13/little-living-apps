@@ -61,12 +61,12 @@ run_as "cd '$REPO_DIR' && '$MISE' exec -- npm install -g @openai/codex"
 log "Building the manager"
 run_as "cd '$REPO_DIR' && '$MISE' exec -- npm ci && '$MISE' exec -- npm run build"
 
-# --- 4b. Playwright + headless Chromium (validation workers screenshot the running app) --------
-# Installed once, host-wide, so each validation worker reuses the cached browser instead of
-# re-downloading it. The browser binary lands in the service user's ~/.cache/ms-playwright — found
-# automatically when a worker (spawned by the manager, which runs as this user) invokes it. The OS
+# --- 4b. Playwright + headless Chromium (workers self-validate: drive + screenshot the app) ----
+# Installed once, host-wide, so every worker reuses the cached browser instead of re-downloading
+# it. The browser binary lands in the service user's ~/.cache/ms-playwright — found automatically
+# when a worker (spawned by the manager, which runs as this user) invokes it. The OS
 # shared-library deps need root (apt), so that step runs outside run_as and is non-fatal.
-log "Installing Playwright + headless Chromium (visual validation)"
+log "Installing Playwright + headless Chromium (worker self-validation)"
 run_as "cd '$REPO_DIR' && '$MISE' exec -- npm install -g playwright"
 run_as "cd '$REPO_DIR' && '$MISE' exec -- npx playwright install chromium"
 ( cd "$REPO_DIR" && HOME="$USER_HOME" "$MISE" exec -- npx --yes playwright install-deps chromium ) \

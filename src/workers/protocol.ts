@@ -4,7 +4,8 @@
 //      one thing it can't otherwise know: the manager never sees its transcript, tool output, or
 //      files — ONLY a summary block it must write. So we spell out that block's format + size budget
 //      up front, instead of the manager discovering the limit reactively and asking for resends.
-//      It also tells workers to preserve clean checkpoint discipline.
+//      It also mandates browser self-validation (every worker proves its own work with screenshots
+//      + real interaction before reporting) and clean checkpoint discipline.
 //
 //   2. extractManagerSummary / managerSummarizer — the reader half. We pull just that block back out
 //      of the worker's full output, so the manager's context carries the worker's own intended
@@ -21,12 +22,21 @@ export const WORKER_PROTOCOL = [
   "[Manager protocol — applies every turn; read this before you start]",
   "- Your manager cannot see your transcript, your tool output, or your files. The ONLY thing it",
   "  receives back from you is the summary block described below — so everything it needs must be there.",
+  "- Validate your own work before reporting — your word alone is not proof. You have headless",
+  "  Chromium via Playwright. For anything a user would see or click, exercise the change the way a",
+  "  user would against the running app — load the real pages, click, fill, submit, not just a 200",
+  "  check — and screenshot the result. Save screenshots under /tmp/lila-shots/ (create it if needed)",
+  "  with descriptive names, then open each one and confirm it shows what the objective asked for.",
+  "  For work with nothing to see, validate with tests or real requests instead.",
   `- End your reply with a section that begins with the exact line "${MANAGER_SUMMARY_MARKER}". Its`,
   "  FIRST line must be the outcome on its own: PASS or FAIL for a validation task, otherwise done or",
   "  blocked plus one clause. Then a tight report in 150 words or less: what you did, which files",
-  "  changed, any commit, and concrete verification (HTTP status codes, test results, command output).",
-  "  Write normally above it — only this block is relayed, and if it runs long it is clipped from the",
-  "  end, so the verdict goes first and nothing outside the block reaches the manager.",
+  "  changed, any commit, and concrete verification (HTTP status codes, test results, what your",
+  "  screenshots show). End the block with a `Screenshots:` line listing the absolute paths of the",
+  "  screenshots that prove the result — the manager can send them to the owner — or `Screenshots: none`",
+  "  if the work had nothing visual. Write normally above the block — only this block is relayed, and",
+  "  if it runs long it is clipped from the end, so the verdict goes first and nothing outside the",
+  "  block reaches the manager.",
   "- Check `git status --short` before editing. Do not modify unrelated dirty files. If a file you",
   "  need to edit is already dirty, inspect the diff first and work with it deliberately; report that",
   "  context in your summary.",

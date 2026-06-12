@@ -26,7 +26,9 @@ function harness(opts: { summarizeLimit?: number } = {}) {
     runner,
     workspaceDir: "/workspace",
     emitEvent: (e) => events.push(e),
-    summarize: clipSummarizer(opts.summarizeLimit ?? 2000),
+    // Comfortably above WORKER_PROTOCOL's length: the fake runner echoes the whole prompt back,
+    // and these tests assert the objective (which rides after the preamble) survives the clip.
+    summarize: clipSummarizer(opts.summarizeLimit ?? 4000),
   });
   return { runner, events, orch };
 }

@@ -157,10 +157,11 @@ The existing Anthropic `ToolSpec`/`buildRegistry`/`dispatch` envelope is deleted
 
 `buildSystemPrompt` splits in two:
 
-- **Static → `AGENTS.md`** (written to the manager working dir at startup): persona, "how you work,"
-  validation discipline, runtime facts, and a new short "your tools" section telling it to use the
-  memory + subagent MCP tools and that an ordinary message goes straight to the owner / `NO_REPLY`
-  for silence. Codex reads `AGENTS.md` from the working directory per session.
+- **Static → `AGENTS.md`** (written to the manager working dir at startup): persona, "how you work"
+  (including what to expect from self-validating workers), runtime facts, and a new short "your
+  tools" section telling it to use the memory + subagent MCP tools and that an ordinary message goes
+  straight to the owner / `NO_REPLY` for silence. Codex reads `AGENTS.md` from the working directory
+  per session.
 - **Volatile → per-turn prompt prefix**: the always-loaded core memory (`system/` bodies, which
   include the `system/workers.md` roster mirror) + the archival index. Kept compact; prepended to
   each event's input so the manager never operates without its standing context. `mirrorWorkers`

@@ -11,6 +11,7 @@ import { join } from "node:path";
 
 import { loadConfig, type Config } from "../src/config.js";
 import { createTelegramClient, type TelegramUpdate } from "../src/transport/telegram.js";
+import { createTelegramDeliver } from "../src/transport/deliver.js";
 import { startPoller, type Poller } from "../src/transport/poller.js";
 import { createManagerApp, type ManagerApp } from "../src/app.js";
 import { clipSummarizer } from "../src/workers/summarize.js";
@@ -67,9 +68,7 @@ export async function startBot(opts: StartBotOptions = {}): Promise<TestBot> {
   const app = await createManagerApp({
     config,
     runner: codex,
-    deliver: async (chatId, text) => {
-      await client.sendMessage(chatId, text);
-    },
+    deliver: createTelegramDeliver(client),
     summarize: clipSummarizer(),
     backendFactory: manager.factory,
   });

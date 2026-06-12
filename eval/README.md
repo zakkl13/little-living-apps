@@ -124,7 +124,7 @@ Scenarios are tagged with the behavior they exercise — these mirror the person
 | axis | desired behavior |
 |---|---|
 | `delegation` | hands real work to subagents, scopes them, acks and lets go |
-| `validation` | independently verifies user-visible work (separate validator, PASS/FAIL) before claiming done |
+| `validation` | claims done only on evidence — workers self-validate (exercise the change, screenshots) and report proof |
 | `reply-discipline` | NO_REPLY on noise events, no narration, one outcome report, no shop talk, matches the owner's technical register |
 | `memory` | writes durable facts down; answers from memory instead of guessing or re-delegating |
 
@@ -142,8 +142,9 @@ it declares its own `timeoutMs` floor and is deliberately not in `--smoke`.
 
 1. `npm run eval -- --update-baseline` once to bless current scores into `eval/baseline.json`
    (committed — it's the regression reference).
-2. Edit the thing you're tuning — usually `src/manager/prompt.ts` (persona / how-you-work /
-   validation discipline), sometimes the tool descriptions in `src/manager/mcp/tools.ts`.
+2. Edit the thing you're tuning — usually `src/manager/prompt.ts` (persona / how-you-work) or
+   `src/workers/protocol.ts` (the self-validation contract), sometimes the tool descriptions in
+   `src/manager/mcp/tools.ts`.
 3. `npm run eval -- --axis <the-behavior> --trials 3` while iterating; full run before blessing.
 4. The summary diffs every scenario against the baseline (📉 flags drops > 0.05; `--strict` makes
    regressions exit non-zero). Improve the axis you're after **without** regressing the others —
@@ -207,6 +208,6 @@ trip a completion-claim check; that's unit-tested).
 - The host-side `allowReply` gate suppresses some model chattiness before it reaches "Telegram", so
   delivery-count checks measure the *system*; `choseSilence()` reads the conversation log and
   measures the *model*. Both matter; know which one a check is asserting.
-- `looksLikeValidation` is a heuristic over the manager's protocol-stripped prompts. If the manager
-  phrases a builder objective like a validation one, a dispatch-classification check can misread it
-  — check the transcript before blaming the model.
+- `VERIFICATION_EVIDENCE` is a heuristic over worker completion reports (workers self-validate and
+  must show their evidence). A worker that phrases real verification unusually can slip past it —
+  check the transcript before blaming the model.

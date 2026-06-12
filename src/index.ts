@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 import { loadConfig, ConfigError } from "./config.js";
 import { createTelegramClient } from "./transport/telegram.js";
+import { createTelegramDeliver } from "./transport/deliver.js";
 import { startPoller } from "./transport/poller.js";
 import { createCodexRunner } from "./workers/runner.js";
 import { createManagerApp } from "./app.js";
@@ -49,9 +50,7 @@ async function main(): Promise<void> {
   const app = await createManagerApp({
     config,
     runner,
-    deliver: async (chatId, text) => {
-      await telegram.sendMessage(chatId, text);
-    },
+    deliver: createTelegramDeliver(telegram),
     downloadPhoto,
   });
 

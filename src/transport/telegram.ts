@@ -7,6 +7,14 @@
 import { logger } from "../logger.js";
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
+export const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
+
+/** An image to upload with sendPhoto. The caller reads the file — the transport stays fs-free. */
+export interface OutboundPhoto {
+  bytes: Buffer;
+  filename: string;
+  caption?: string;
+}
 
 /** One size of an inbound photo. Telegram orders the array ascending, so the last is the largest. */
 export interface TelegramPhotoSize {
@@ -45,6 +53,8 @@ export interface GetUpdatesOptions {
 export interface TelegramClient {
   /** Sends text (chunked >4096). Returns the message id of the FIRST chunk, if any. */
   sendMessage(chatId: number, text: string): Promise<number | undefined>;
+  /** Uploads an image (multipart sendPhoto). Captions are clipped to Telegram's 1024-char cap. */
+  sendPhoto(chatId: number, photo: OutboundPhoto): Promise<number | undefined>;
   /** Edits an existing message in place (used for the live "working…" status). */
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
   /** Remove any registered webhook so getUpdates is allowed (they are mutually exclusive). */
@@ -85,13 +95,7 @@ export function chunkText(text: string, max = TELEGRAM_MAX_MESSAGE_LENGTH): stri
 export function createTelegramClient(opts: TelegramClientOptions): TelegramClient {
   const apiBase = `${opts.baseUrl}/bot${opts.token}`;
 
-  async function call<T>(method: string, body: unknown, signal?: AbortSignal): Promise<T> {
-    const res = await fetch(`${apiBase}/${method}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      ...(signal ? { signal } : {}),
-    });
+  async function parseReply<T>(method: string, res: Response): Promise<T> {
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
       result?: T;
@@ -103,6 +107,16 @@ export function createTelegramClient(opts: TelegramClientOptions): TelegramClien
       );
     }
     return json.result as T;
+  }
+
+  async function call<T>(method: string, body: unknown, signal?: AbortSignal): Promise<T> {
+    const res = await fetch(`${apiBase}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
+    });
+    return parseReply(method, res);
   }
 
   return {
@@ -119,6 +133,17 @@ export function createTelegramClient(opts: TelegramClientOptions): TelegramClien
         if (firstId === undefined) firstId = msg?.message_id;
       }
       return firstId;
+    },
+
+    async sendPhoto(chatId: number, photo: OutboundPhoto): Promise<number | undefined> {
+      // Photo uploads use multipart/form-data, not the JSON surface (the bytes ride as a file part).
+      const form = new FormData();
+      form.append("chat_id", String(chatId));
+      if (photo.caption) form.append("caption", photo.caption.slice(0, TELEGRAM_MAX_CAPTION_LENGTH));
+      form.append("photo", new Blob([new Uint8Array(photo.bytes)]), photo.filename);
+      const res = await fetch(`${apiBase}/sendPhoto`, { method: "POST", body: form });
+      const msg = await parseReply<{ message_id: number }>("sendPhoto", res);
+      return msg?.message_id;
     },
 
     async editMessageText(chatId: number, messageId: number, text: string): Promise<void> {

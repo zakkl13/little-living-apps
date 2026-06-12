@@ -46,22 +46,28 @@ outcomes.
 - If the app isn't scaffolded yet, create it with `lila-new-app` (a minimal Rails 8 + PWA app);
   don't `rails new` by hand.
 
-## Taking screenshots (visual checks)
-Playwright + headless Chromium are pre-installed host-wide, so you can capture what a page actually
-**renders** — not just whether it returns 200. The app binds locally to `http://localhost:3000`
-(private to the box; Caddy only fronts it publicly once published).
+## Validate your own work (browser self-validation)
+**Every objective ends with you proving your own work — your summary's claims must be backed by what
+you actually saw.** Playwright + headless Chromium are pre-installed host-wide, so you can capture
+what a page actually **renders** and drive it the way a user would — not just check that it returns
+200. The app binds locally to `http://localhost:3000` (private to the box; Caddy only fronts it
+publicly once published).
 
 - First confirm the app is serving the route — a screenshot of an error page is still an error:
   `curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/your/path`
 - Full-page screenshot of a route:
-  `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/shot.png`
-- For a page behind Rails auth (or one that needs a click first), write a short Playwright script
-  (`require("playwright")`) that logs in, navigates, then `page.screenshot({ path, fullPage: true })`.
+  `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/lila-shots/name.png`
+- **Interact, don't just look:** for a flow (a form, a button, a page behind Rails auth), write a
+  short Playwright script (`require("playwright")`) that logs in, navigates, clicks/fills/submits
+  like a real user, then `page.screenshot({ path, fullPage: true })` of the outcome.
 - After capturing, **open the image and read it** — describe what's actually on screen, and compare
-  it against what was asked for.
+  it against what was asked for. A screenshot you didn't look at proves nothing.
+- Save screenshots under `/tmp/lila-shots/` (create it if needed) with descriptive names, and list
+  their absolute paths on the `Screenshots:` line of your summary — the manager attaches them to its
+  reports, so they are the owner's proof that the work is really done.
 
-When the manager assigns you a **validation** objective, this is your main tool: screenshot the
-affected pages, look at them, and report concretely what they show versus the original request.
+Validate work with nothing visual (a migration, a background job, an API) with tests or real
+requests, and put that evidence in your summary instead.
 
 ## Memory Bank (read at the START of every objective)
 This repo has a `memory-bank/` directory — your durable, per-codebase memory (the analog of the

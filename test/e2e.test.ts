@@ -11,6 +11,9 @@
 
 import { strict as assert } from "node:assert";
 import { afterEach, describe, it } from "node:test";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { startBot, messageUpdate, type TestBot } from "./helpers.js";
 import { say, startWorkers, type ManagerStep } from "./fakes/fakeManager.js";
@@ -118,6 +121,25 @@ describe("e2e: cold-wake recovery", () => {
     assert.ok(bot2.telegram.sent.some((m) => /still here/.test(m.text)));
     // Core memory (git) survived: the owner profile is on disk for the next turn's context header.
     assert.match(bot2.app.mem.loadSystem(), /prefers terse replies/);
+  });
+});
+
+describe("e2e: screenshot attachments", () => {
+  it("a manager reply with ATTACH lines sends the photo to the owner's chat", async () => {
+    const shot = join(mkdtempSync(join(tmpdir(), "lila-shots-")), "greet.png");
+    writeFileSync(shot, Buffer.from("png-ish proof bytes"));
+    const bot = await boot({
+      script: [say(`The greeting page is live — proof attached.\nATTACH: ${shot}`)],
+    });
+
+    bot.sendUpdate(messageUpdate("show me the greeting page"));
+    await bot.telegram.waitFor(() => bot.telegram.photos.length >= 1);
+
+    assert.equal(bot.telegram.sent.length, 1);
+    assert.equal(bot.telegram.sent[0]!.text, "The greeting page is live — proof attached.");
+    assert.ok(!bot.telegram.sent[0]!.text.includes("ATTACH:"), "marker lines never reach the owner");
+    assert.equal(bot.telegram.photos[0]!.filename, "greet.png");
+    assert.equal(bot.telegram.photos[0]!.chatId, bot.telegram.sent[0]!.chatId);
   });
 });
 

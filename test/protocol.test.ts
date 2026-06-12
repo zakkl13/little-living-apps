@@ -23,6 +23,14 @@ describe("worker protocol", () => {
     assert.ok(out.startsWith(WORKER_PROTOCOL), "protocol is the preamble");
   });
 
+  it("mandates browser self-validation with screenshots reported back", () => {
+    assert.match(WORKER_PROTOCOL, /Validate your own work/i, "self-validation is every worker's job");
+    assert.match(WORKER_PROTOCOL, /Chromium via Playwright/i, "names the browser tooling");
+    assert.match(WORKER_PROTOCOL, /click, fill, submit/i, "real interaction, not just a 200 check");
+    assert.match(WORKER_PROTOCOL, /\/tmp\/lila-shots\//, "fixes the screenshot directory");
+    assert.match(WORKER_PROTOCOL, /`Screenshots:` line/, "summary carries the proof paths");
+  });
+
   it("extracts ONLY the summary block when the marker is present", () => {
     const output = [
       "lots of setup chatter…",

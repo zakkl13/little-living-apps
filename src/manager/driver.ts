@@ -15,8 +15,9 @@ import type { ManagerThread, ManagerThreadFactory } from "./managerCodex.js";
 import { friendlyError } from "../workers/runner.js";
 import { logger } from "../logger.js";
 
-/** Delivers the manager's user-facing text to the owner's chat (wraps Telegram sendMessage). */
-export type DeliverFn = (chatId: number, text: string) => Promise<void>;
+/** Delivers the manager's user-facing text to the owner's chat (wraps Telegram sendMessage), plus
+ *  any image attachments the manager named via ATTACH lines (local paths, sent as photos). */
+export type DeliverFn = (chatId: number, text: string, attachments?: string[]) => Promise<void>;
 
 /** A turn emits this to absorb an event without messaging the owner (reused from the v0.2 loop).
  *  Suppresses the WHOLE message wherever it appears on its own line, so private reasoning that leads
@@ -146,7 +147,10 @@ export function createManagerDriver(deps: ManagerDriverDeps): ManagerDriver {
 
       if (finalReply !== undefined) {
         const reply = applyNoReply(finalReply);
-        if (reply && (opts?.allowReply?.() ?? true)) await deps.deliver(chatId, reply);
+        if (reply && (opts?.allowReply?.() ?? true)) {
+          const { text: body, attachments } = extractAttachments(reply);
+          await deps.deliver(chatId, body, attachments);
+        }
       }
     },
   };
@@ -217,6 +221,23 @@ function handleEvent(
 export function applyNoReply(text: string): string {
   const silenced = text.split(/\r?\n/).some((line) => line.trim() === NO_REPLY);
   return silenced ? "" : text.trim();
+}
+
+/** A line naming an image to attach to the message: `ATTACH: /absolute/path.png`. */
+const ATTACH_LINE = /^ATTACH:\s*(\/\S+)\s*$/;
+
+/** Split a reply into the text the owner reads and the image paths to send as photos. ATTACH lines
+ *  are part of the message (so NO_REPLY and the delivery gate govern them too), never owner-visible
+ *  text. The paths are local claims, not facts — the delivery side validates them against disk. */
+export function extractAttachments(reply: string): { text: string; attachments: string[] } {
+  const attachments: string[] = [];
+  const kept: string[] = [];
+  for (const line of reply.split(/\r?\n/)) {
+    const m = ATTACH_LINE.exec(line.trim());
+    if (m) attachments.push(m[1]!);
+    else kept.push(line);
+  }
+  return { text: kept.join("\n").trim(), attachments };
 }
 
 function mcpResultText(result: { content: Array<{ type?: string; text?: string }> } | undefined): string | undefined {
