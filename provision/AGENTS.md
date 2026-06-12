@@ -7,7 +7,8 @@ the concrete work in this repo. You never talk to the owner directly — you ret
 
 ## Your runtime environment
 - You run on an **always-on Linux VM** that you and your team fully control. There is no hibernation; the box stays up.
-- You have a normal persistent filesystem, outbound internet, and root-capable tooling. The app lives in this git repo (`$WORKSPACE_DIR`, default `/srv/app`).
+- You have a normal persistent filesystem, outbound internet, and root-capable tooling. The app lives in this git repo — your working directory (`$WORKSPACE_DIR`; `/srv/app` on a single-app host, or `/srv/<instance>` when several apps share the box).
+- **This host may run several little-living-apps instances** — one manager + one app each, isolated by their own env file, ports, and systemd units. You only ever touch **your** app: reach it at `http://localhost:${APP_PORT:-3000}` (your instance's port, from the env) and restart it with **your** unit `${LILA_APP_SERVICE:-lila-app}`. Never hardcode `3000` or `lila-app` — on a multi-app host that would hit a *different* instance's app.
 - **Long-running processes are managed by `systemd`**, not a TTY. Never leave a server running only inside a console session — install a unit so it survives logout/reboot.
 - **Real `cron`/systemd timers work** — the box is always on, so scheduled jobs fire normally. Still make scheduled work **idempotent** (it may fire late or twice).
 
@@ -15,8 +16,8 @@ the concrete work in this repo. You never talk to the owner directly — you ret
 - The app is a **Rails 8** project (SQLite + the Solid Queue/Cache/Cable stack, Hotwire/Turbo for live UI, structured as a **PWA**). Build with the grain of Rails 8 defaults — reach for built-ins before adding gems, and keep things minimal.
 - **Reload mode:** the app runs in the development environment under systemd, so your edits to
   existing code go live on the **next request** — no restart needed. Structural changes (a new gem,
-  an initializer, a route, a migration) DO need a restart: `sudo systemctl restart lila-app`. Run
-  migrations with `bin/rails db:migrate`.
+  an initializer, a route, a migration) DO need a restart: `sudo systemctl restart "${LILA_APP_SERVICE:-lila-app}"`
+  (your instance's unit — the env var is set for you). Run migrations with `bin/rails db:migrate`.
 - **Auth:** use Rails' built-in authentication (`bin/rails generate authentication`) for access
   control — don't hand-roll or add an auth gem.
 - **Reserved path:** `/_agent/*` is reserved for an optional in-app agent surface. Never route app
@@ -28,17 +29,18 @@ the concrete work in this repo. You never talk to the owner directly — you ret
 **Every objective ends with you proving your own work — your summary's claims must be backed by what
 you actually saw.** Playwright + headless Chromium are pre-installed host-wide, so you can capture
 what a page actually **renders** and drive it the way a user would — not just check that it returns
-200. The app binds locally to `http://localhost:3000` (private to the box; Caddy only fronts it
-publicly once published).
+200. The app binds locally to `http://localhost:${APP_PORT:-3000}` — **your** instance's port (private
+to the box; Caddy only fronts it publicly once published). Use `$APP_PORT`, never a literal `3000`:
+on a host with several instances that port belongs to a different app.
 
 `playwright` is installed at a fixed location and `NODE_PATH` is set for you, so `require("playwright")`
 resolves from any directory and `npx playwright …` works — you do **not** need to `npm install` it.
 Always save screenshots under `/tmp/lila-shots/` (`mkdir -p` it first) with descriptive names.
 
 1. **First confirm the app is serving the route** — a screenshot of an error page is still an error:
-   `curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/your/path`
+   `curl -sS -o /dev/null -w '%{http_code}\n' "http://localhost:${APP_PORT:-3000}/your/path"`
 2. **A single static page** needs only the CLI:
-   `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/lila-shots/name.png`
+   `npx playwright screenshot --full-page "http://localhost:${APP_PORT:-3000}/your/path" /tmp/lila-shots/name.png`
 3. **Anything interactive — the default for user-visible work — write a script and drive it.** Most
    real changes live behind a click, a form submit, or Rails auth, and a bare URL screenshot can't
    reach them. Write a short Node script that logs in, navigates, acts like a user, and screenshots
@@ -47,19 +49,20 @@ Always save screenshots under `/tmp/lila-shots/` (`mkdir -p` it first) with desc
    ```js
    // /tmp/lila-shots/validate.js — run: node /tmp/lila-shots/validate.js
    const { chromium } = require("playwright"); // resolves via NODE_PATH — no install needed
+   const base = `http://localhost:${process.env.APP_PORT || 3000}`; // YOUR instance's app port
    (async () => {
      const browser = await chromium.launch(); // headless by default
      const page = await browser.newPage();
 
      // 1) Sign in if the page is behind Rails auth (skip if public).
-     await page.goto("http://localhost:3000/session/new");
+     await page.goto(`${base}/session/new`);
      await page.fill('input[name="email_address"]', "test@example.com");
      await page.fill('input[name="password"]', "password");
      await page.click('button[type="submit"]');
      await page.waitForURL("**/"); // wait for the post-login redirect
 
      // 2) Exercise the actual change the way the user would.
-     await page.goto("http://localhost:3000/notes/new");
+     await page.goto(`${base}/notes/new`);
      await page.fill('input[name="note[title]"]', "Groceries");
      await page.click('button:has-text("Save")');
 
