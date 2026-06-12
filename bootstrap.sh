@@ -62,15 +62,25 @@ log "Building the manager"
 run_as "cd '$REPO_DIR' && '$MISE' exec -- npm ci && '$MISE' exec -- npm run build"
 
 # --- 4b. Playwright + headless Chromium (workers self-validate: drive + screenshot the app) ----
-# Installed once, host-wide, so every worker reuses the cached browser instead of re-downloading
-# it. The browser binary lands in the service user's ~/.cache/ms-playwright — found automatically
-# when a worker (spawned by the manager, which runs as this user) invokes it. The OS
-# shared-library deps need root (apt), so that step runs outside run_as and is non-fatal.
-log "Installing Playwright + headless Chromium (worker self-validation)"
-run_as "cd '$REPO_DIR' && '$MISE' exec -- npm install -g playwright"
-run_as "cd '$REPO_DIR' && '$MISE' exec -- npx playwright install chromium"
-( cd "$REPO_DIR" && HOME="$USER_HOME" "$MISE" exec -- npx --yes playwright install-deps chromium ) \
+# The `playwright` npm package goes into a FIXED, node-version-independent location
+# ($PW_TOOLING/node_modules) — NOT `npm install -g`, whose prefix is tied to the active node
+# version and silently orphans the install on the next node upgrade. The service unit exports
+# NODE_PATH=$PW_TOOLING/node_modules, so workers (Codex children of the manager, inheriting its env)
+# can `require("playwright")` in an interactive script AND `npx playwright …` resolves — from any
+# cwd, with no network re-fetch. The browser binary lands once in the service user's
+# ~/.cache/ms-playwright (shared host-wide). The OS shared-library deps need root (apt), so that step
+# runs outside run_as and is non-fatal.
+PW_TOOLING="/opt/lila/tooling"
+log "Installing Playwright (-> $PW_TOOLING) + headless Chromium (worker self-validation)"
+mkdir -p "$PW_TOOLING"
+chown "$SERVICE_USER:$SERVICE_USER" "$PW_TOOLING"
+run_as "cd '$PW_TOOLING' && { [ -f package.json ] || '$MISE' exec -- npm init -y >/dev/null; } && '$MISE' exec -- npm install playwright"
+run_as "cd '$PW_TOOLING' && NODE_PATH='$PW_TOOLING/node_modules' '$MISE' exec -- npx playwright install chromium"
+( cd "$PW_TOOLING" && HOME="$USER_HOME" NODE_PATH="$PW_TOOLING/node_modules" "$MISE" exec -- npx playwright install-deps chromium ) \
   || log "WARN: 'playwright install-deps' failed — chromium may need system libs; rerun bootstrap or run it by hand"
+# Smoke-test the contract workers depend on: require("playwright") resolves purely via NODE_PATH.
+run_as "NODE_PATH='$PW_TOOLING/node_modules' '$MISE' exec -- node -e 'require(\"playwright\"); console.log(\"playwright require() OK via NODE_PATH\")'" \
+  || die "Playwright is not require()-resolvable via NODE_PATH=$PW_TOOLING/node_modules — worker self-validation would fail."
 
 # --- 5. Data dirs + workspace (owned by the service user) -------------------------------------
 WORKSPACE_DIR="${WORKSPACE_DIR:-/srv/app}"

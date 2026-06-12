@@ -53,18 +53,53 @@ what a page actually **renders** and drive it the way a user would — not just 
 200. The app binds locally to `http://localhost:3000` (private to the box; Caddy only fronts it
 publicly once published).
 
-- First confirm the app is serving the route — a screenshot of an error page is still an error:
-  `curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/your/path`
-- Full-page screenshot of a route:
-  `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/lila-shots/name.png`
-- **Interact, don't just look:** for a flow (a form, a button, a page behind Rails auth), write a
-  short Playwright script (`require("playwright")`) that logs in, navigates, clicks/fills/submits
-  like a real user, then `page.screenshot({ path, fullPage: true })` of the outcome.
-- After capturing, **open the image and read it** — describe what's actually on screen, and compare
-  it against what was asked for. A screenshot you didn't look at proves nothing.
-- Save screenshots under `/tmp/lila-shots/` (create it if needed) with descriptive names, and list
-  their absolute paths on the `Screenshots:` line of your summary — the manager attaches them to its
-  reports, so they are the owner's proof that the work is really done.
+`playwright` is installed at a fixed location and `NODE_PATH` is set for you, so `require("playwright")`
+resolves from any directory and `npx playwright …` works — you do **not** need to `npm install` it.
+Always save screenshots under `/tmp/lila-shots/` (`mkdir -p` it first) with descriptive names.
+
+1. **First confirm the app is serving the route** — a screenshot of an error page is still an error:
+   `curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:3000/your/path`
+2. **A single static page** needs only the CLI:
+   `npx playwright screenshot --full-page "http://localhost:3000/your/path" /tmp/lila-shots/name.png`
+3. **Anything interactive — the default for user-visible work — write a script and drive it.** Most
+   real changes live behind a click, a form submit, or Rails auth, and a bare URL screenshot can't
+   reach them. Write a short Node script that logs in, navigates, acts like a user, and screenshots
+   the *outcome* (asserting along the way so a broken flow fails loudly, not silently):
+
+   ```js
+   // /tmp/lila-shots/validate.js — run: node /tmp/lila-shots/validate.js
+   const { chromium } = require("playwright"); // resolves via NODE_PATH — no install needed
+   (async () => {
+     const browser = await chromium.launch(); // headless by default
+     const page = await browser.newPage();
+
+     // 1) Sign in if the page is behind Rails auth (skip if public).
+     await page.goto("http://localhost:3000/session/new");
+     await page.fill('input[name="email_address"]', "test@example.com");
+     await page.fill('input[name="password"]', "password");
+     await page.click('button[type="submit"]');
+     await page.waitForURL("**/"); // wait for the post-login redirect
+
+     // 2) Exercise the actual change the way the user would.
+     await page.goto("http://localhost:3000/notes/new");
+     await page.fill('input[name="note[title]"]', "Groceries");
+     await page.click('button:has-text("Save")');
+
+     // 3) Assert the user-visible result, THEN screenshot it as proof.
+     await page.waitForSelector("text=Groceries"); // throws if it never appears
+     await page.screenshot({ path: "/tmp/lila-shots/note-created.png", fullPage: true });
+
+     await browser.close();
+     console.log("OK: note created and visible");
+   })().catch((e) => { console.error("VALIDATION FAILED:", e.message); process.exit(1); });
+   ```
+
+   Adapt the URLs/selectors to the real app (read the views/routes first; don't guess selectors).
+   A non-zero exit means your change does **not** work yet — fix it before reporting done.
+4. **After capturing, open each image and read it** — describe what's actually on screen and compare
+   it against what was asked for. A screenshot you generated but didn't look at proves nothing.
+5. **List the screenshot paths on the `Screenshots:` line of your summary.** The manager attaches
+   them to its report to the owner, so they are the owner's proof that the work is really done.
 
 Validate work with nothing visual (a migration, a background job, an API) with tests or real
 requests, and put that evidence in your summary instead.

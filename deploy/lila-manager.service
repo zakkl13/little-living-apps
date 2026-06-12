@@ -14,6 +14,11 @@ Type=simple
 User=__USER__
 WorkingDirectory=__REPO_DIR__
 EnvironmentFile=/etc/lila/lila.env
+# Worker self-validation: playwright lives at a fixed location (bootstrap §4b), exposed here so that
+# Codex workers — child processes of this manager, inheriting its env — can `require("playwright")`
+# in interactive validation scripts (and `npx playwright …`) from any cwd. Harmless to the manager's
+# own node process: local node_modules still take precedence; this is only a fallback resolution path.
+Environment=NODE_PATH=/opt/lila/tooling/node_modules
 # mise exec resolves the pinned Ruby/Node (and the global codex bin) from .mise.toml in WorkingDirectory.
 ExecStart=__MISE__ exec -- npm start
 Restart=always
