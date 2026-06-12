@@ -12,7 +12,9 @@
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { createRequire } from "node:module";
+import { join, relative, delimiter, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { loadConfig } from "../src/config.js";
 import { createManagerApp, type ManagerApp } from "../src/app.js";
@@ -34,6 +36,35 @@ import type {
 
 export const EVAL_OWNER_ID = 77_000_001;
 
+/** Make worker browser self-validation work in the eval the same way it works on the deployed host.
+ *
+ *  Production parity: eval workers ARE the production runner, whose `sanitizedEnv()` forwards the
+ *  eval process's env to the Codex CLI. On the host, the manager unit sets
+ *  `NODE_PATH=/opt/lila/tooling/node_modules` so a worker's `require("playwright")` resolves from any
+ *  cwd; a dev box has no such NODE_PATH, so without this the same script the host runs would fail
+ *  MODULE_NOT_FOUND. Here `playwright` is a devDependency, so we expose the repo's own node_modules on
+ *  NODE_PATH (idempotently, prepended) before any worker spawns. The Chromium BROWSER still has to be
+ *  present once on the box — `npx playwright install chromium` — which the eval README documents. */
+let playwrightExposed = false;
+function exposePlaywrightToWorkers(): void {
+  if (playwrightExposed) return;
+  playwrightExposed = true;
+  const repoNodeModules = join(dirname(fileURLToPath(import.meta.url)), "..", "node_modules");
+  const parts = (process.env.NODE_PATH ?? "").split(delimiter).filter(Boolean);
+  if (!parts.includes(repoNodeModules)) {
+    process.env.NODE_PATH = [repoNodeModules, ...parts].join(delimiter);
+  }
+  // Surface the actionable hint once, rather than letting every worker rediscover it the hard way.
+  try {
+    createRequire(import.meta.url).resolve("playwright");
+  } catch {
+    console.warn(
+      "[eval] playwright is not installed — worker browser self-validation will fail.\n" +
+        "        Run `npm install` (it is a devDependency) and `npx playwright install chromium`.",
+    );
+  }
+}
+
 export interface HarnessOptions {
   /** Wall-clock budget for the whole trial (drain included). */
   timeoutMs: number;
@@ -50,6 +81,7 @@ export interface TrialOutcome {
 }
 
 export async function runScenarioTrial(scenario: Scenario, opts: HarnessOptions): Promise<TrialOutcome> {
+  exposePlaywrightToWorkers(); // before any worker spawns: let require("playwright") resolve, host-style
   const dir = mkdtempSync(join(tmpdir(), "lila-eval-"));
   const workspace = join(dir, "workspace");
   mkdirSync(workspace, { recursive: true });

@@ -56,6 +56,19 @@ Each run writes `eval/results/<run-id>/` (gitignored): `report.md`, `report.json
 **trial report** JSON per trial. **Read the trial reports of failed runs**; that's where the
 insight is.
 
+**Browser self-validation parity:** workers self-validate user-visible work in a real headless
+browser (`provision/AGENTS.md`), so the eval gives them the same capability the deployed host does.
+`playwright` is a devDependency (`npm install` provides it) and the harness puts the repo's
+`node_modules` on `NODE_PATH` for workers — mirroring the host's
+`NODE_PATH=/opt/lila/tooling/node_modules`. The Chromium **browser** itself is a one-time install:
+
+```bash
+npx playwright install chromium
+```
+
+Without it, a worker's screenshot step fails and it falls back to `curl`/test evidence (still graded —
+`VERIFICATION_EVIDENCE` accepts either); the harness prints a one-line hint if `playwright` is missing.
+
 ## The trial report (`<scenario>.t<n>.json`)
 
 Each trial persists ONE self-contained, versioned record (`schema: "lila-eval-trial@1"`, the
