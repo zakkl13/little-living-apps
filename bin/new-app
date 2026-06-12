@@ -24,7 +24,15 @@ USER_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
 MISE="$USER_HOME/.local/bin/mise"
 [[ -x "$MISE" ]] || die "mise not found at $MISE — run bootstrap.sh first."
 
-APP_DIR="${WORKSPACE_DIR:-/srv/app}"
+# INSTANCE mode (set by bin/new-instance): scaffold an *additional* app under a systemd template unit
+# lila-app@<instance> reading /etc/lila/<instance>.env, instead of the single literal lila-app.service.
+# When set, the app dir defaults to /srv/<instance> and the port comes from the instance's env file.
+INSTANCE="${LILA_INSTANCE:-}"
+if [[ -n "$INSTANCE" ]]; then
+  APP_DIR="${WORKSPACE_DIR:-/srv/$INSTANCE}"
+else
+  APP_DIR="${WORKSPACE_DIR:-/srv/app}"
+fi
 APP_PORT="${APP_PORT:-3000}"
 run_as() { sudo -u "$SERVICE_USER" -H bash -lc "$*"; }
 
@@ -90,19 +98,32 @@ log "Preparing databases"
 run_as "cd '$APP_DIR' && RAILS_ENV=development '$MISE' exec -- bin/rails db:prepare"
 
 # --- 4. Install + start the app service (reload mode) ------------------------------------------
-log "Installing systemd unit lila-app.service (reload mode, bound to 127.0.0.1:$APP_PORT)"
-sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__MISE__|$MISE|g" -e "s|__PORT__|$APP_PORT|g" \
-  "$REPO_DIR/deploy/lila-app.service" > /etc/systemd/system/lila-app.service
-systemctl daemon-reload
-systemctl enable lila-app.service
-systemctl restart lila-app.service
+if [[ -n "$INSTANCE" ]]; then
+  APP_UNIT="lila-app@$INSTANCE"
+  # Template unit: host-level constants are substituted once; %i selects the dir (/srv/%i) and the
+  # env file (/etc/lila/%i.env, which carries APP_PORT). Safe to re-install (idempotent).
+  log "Installing systemd template unit lila-app@.service; starting $APP_UNIT (127.0.0.1:$APP_PORT)"
+  sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__MISE__|$MISE|g" \
+    "$REPO_DIR/deploy/lila-app@.service" > /etc/systemd/system/lila-app@.service
+  systemctl daemon-reload
+  systemctl enable "$APP_UNIT"
+  systemctl restart "$APP_UNIT"
+else
+  APP_UNIT="lila-app"
+  log "Installing systemd unit lila-app.service (reload mode, bound to 127.0.0.1:$APP_PORT)"
+  sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__MISE__|$MISE|g" -e "s|__PORT__|$APP_PORT|g" \
+    "$REPO_DIR/deploy/lila-app.service" > /etc/systemd/system/lila-app.service
+  systemctl daemon-reload
+  systemctl enable lila-app.service
+  systemctl restart lila-app.service
+fi
 
 cat <<EOF
 
 ────────────────────────────────────────────────────────────────────────────
 App is live in reload mode on http://127.0.0.1:$APP_PORT (private to the box).
-  Logs:    journalctl -u lila-app -f
-  Restart: sudo systemctl restart lila-app   # only for new gems / initializers / routes
+  Logs:    journalctl -u $APP_UNIT -f
+  Restart: sudo systemctl restart $APP_UNIT   # only for new gems / initializers / routes
 
 To publish it behind YOUR domain (TLS via Caddy):
   1. Point your domain's DNS at this host.

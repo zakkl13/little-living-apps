@@ -23,6 +23,9 @@ export interface Config {
   appPublicUrl: string;
   /** Holds the app the agent builds and maintains (DESIGN §10). */
   workspaceDir: string;
+  /** systemd unit name for the app, surfaced to the manager so a worker restarts the RIGHT app.
+   *  Default "lila-app" (single-instance host); a template instance sets "lila-app@<name>". */
+  appServiceName: string;
   sandboxMode: SandboxMode;
   /** Telegram Bot API base URL; overridden in tests. */
   telegramApiBaseUrl: string;
@@ -125,6 +128,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     allowedUserIds,
     appPublicUrl: (env.APP_PUBLIC_URL?.trim() ?? "").replace(/\/+$/, ""),
     workspaceDir: env.WORKSPACE_DIR?.trim() || "/srv/app",
+    appServiceName: env.LILA_APP_SERVICE?.trim() || "lila-app",
     sandboxMode: sandboxRaw,
     telegramApiBaseUrl: (env.TELEGRAM_API_BASE_URL?.trim() || "https://api.telegram.org").replace(
       /\/+$/,

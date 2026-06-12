@@ -12,6 +12,13 @@
 #
 # Access control is the app's job: generate Rails' built-in auth (bin/rails generate authentication)
 # so only you + invited users get in. Caddy just publishes; it does not authenticate.
+#
+# MULTIPLE INSTANCES: this file publishes the PRIMARY app ($LILA_DOMAIN). Each additional instance
+# (bin/new-instance) drops its own site block at /etc/caddy/sites/<name>.caddy, imported below — so a
+# Caddyfile regen (which rewrites only this block) never clobbers the other instances. A glob that
+# matches nothing is fine; bin/new-instance creates the directory.
+import /etc/caddy/sites/*.caddy
+
 {$LILA_DOMAIN:localhost} {
 	# Inspector: the manager's read-only observability plane. Only routed when the manager is started
 	# with INSPECTOR_ENABLED=true (it binds 127.0.0.1:9090). The manager checks INSPECTOR_TOKEN on

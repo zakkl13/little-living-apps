@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# bin/new-instance — stand up an ADDITIONAL little living app on a host already bootstrapped by
+# bootstrap.sh. The model never changes: one instance = one brain (a Codex manager) = one app. This
+# just lets several of them share a host, each fully isolated by its own per-instance env file
+# (/etc/lila/<name>.env), workspace (/srv/<name>), data dir (/var/lib/lila/<name>), ports, Telegram
+# bot, and domain. The manager + app run under systemd TEMPLATE units (lila-{manager,app}@<name>).
+#
+# Prereq: bootstrap.sh has already run on this host (toolchain, Codex CLI, Playwright, Caddy).
+#
+#   sudo LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
+#        TELEGRAM_BOT_TOKEN=123:ABC \
+#        bash bin/new-instance cm
+#
+# ALLOWED_USER_IDS and INSPECTOR_TOKEN are inherited from the primary /etc/lila/lila.env if unset
+# (INSPECTOR_TOKEN is otherwise auto-generated). Idempotent: re-running refreshes the env file, units,
+# and Caddy block without clobbering the workspace.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+log() { printf '\033[1;36m[new-instance]\033[0m %s\n' "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "Run with sudo (needs systemd + /etc): sudo bash bin/new-instance <name>"
+
+NAME="${1:-}"
+[[ -n "$NAME" ]] || die "Usage: sudo [LILA_DOMAIN=… APP_PORT=… INSPECTOR_PORT=… TELEGRAM_BOT_TOKEN=…] bash bin/new-instance <name>"
+[[ "$NAME" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "Instance name must be lowercase alnum/dash (got '$NAME')."
+[[ "$NAME" != "app" && "$NAME" != "manager" ]] || die "'$NAME' is reserved; pick another instance name."
+
+# Refuse the billing-flip footgun (same guard as bootstrap.sh): either key flips Codex to metered API.
+for key in OPENAI_API_KEY CODEX_API_KEY; do
+  [[ -z "${!key:-}" ]] || die "$key is set — unset it (Codex must ride the ChatGPT subscription)."
+done
+
+SERVICE_USER="${SERVICE_USER:-${SUDO_USER:-}}"
+[[ -n "$SERVICE_USER" && "$SERVICE_USER" != "root" ]] ||
+  die "Could not determine a non-root service user. Re-run via sudo from your normal account, or set SERVICE_USER=<name>."
+USER_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
+MISE="$USER_HOME/.local/bin/mise"
+[[ -x "$MISE" ]] || die "mise not found at $MISE — run bootstrap.sh on this host first."
+run_as() { sudo -u "$SERVICE_USER" -H bash -lc "$*"; }
+
+PRIMARY_ENV=/etc/lila/lila.env
+inherit() { # inherit VAR from the primary env file if not already set in this shell
+  local var="$1"
+  [[ -n "${!var:-}" ]] && return 0
+  [[ -f "$PRIMARY_ENV" ]] || return 0
+  local v; v="$(grep -E "^${var}=" "$PRIMARY_ENV" | head -1 | cut -d= -f2- | tr -d '"'\''')"
+  [[ -n "$v" ]] && printf -v "$var" '%s' "$v" || true
+}
+
+# --- Resolve per-instance config --------------------------------------------------------------
+APP_DIR="/srv/$NAME"
+DATA_DIR="/var/lib/lila/$NAME"
+ENV_FILE="/etc/lila/$NAME.env"
+APP_PORT="${APP_PORT:-}"
+INSPECTOR_PORT="${INSPECTOR_PORT:-}"
+LILA_DOMAIN="${LILA_DOMAIN:-}"
+inherit ALLOWED_USER_IDS
+inherit INSPECTOR_TOKEN
+[[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || die "TELEGRAM_BOT_TOKEN is required (create a NEW bot via @BotFather — each instance is its own bot)."
+[[ -n "${ALLOWED_USER_IDS:-}" ]] || die "ALLOWED_USER_IDS is required (not set, and none found in $PRIMARY_ENV)."
+[[ -n "$APP_PORT" ]] || die "APP_PORT is required (pick a free port, e.g. 3001)."
+[[ -n "$INSPECTOR_PORT" ]] || die "INSPECTOR_PORT is required (pick a free port, e.g. 9091)."
+INSPECTOR_TOKEN="${INSPECTOR_TOKEN:-$(head -c 24 /dev/urandom | xxd -p | tr -d '\n')}"
+APP_PUBLIC_URL="${APP_PUBLIC_URL:-${LILA_DOMAIN:+https://$LILA_DOMAIN}}"
+
+# Guard against port/name collisions with an existing instance env file.
+for other in /etc/lila/*.env; do
+  [[ -e "$other" && "$other" != "$ENV_FILE" ]] || continue
+  for p in APP_PORT:"$APP_PORT" INSPECTOR_PORT:"$INSPECTOR_PORT"; do
+    grep -qE "^${p%%:*}=${p#*:}\b" "$other" &&
+      die "${p%%:*}=${p#*:} already used by $(basename "$other" .env). Pick a different port."
+  done
+done
+
+log "Instance '$NAME' → $APP_DIR  (app :$APP_PORT, inspector :$INSPECTOR_PORT, domain ${LILA_DOMAIN:-none})"
+
+# --- 1. Per-instance dirs + workspace seed (mirrors bootstrap.sh §5) ---------------------------
+CODEX_HOME="$DATA_DIR/codex"
+MEMORY_DIR="$DATA_DIR/memory"
+STATE_DIR="$DATA_DIR/state"
+log "Creating $APP_DIR + $DATA_DIR/{codex,memory,state}"
+mkdir -p "$APP_DIR" "$CODEX_HOME" "$MEMORY_DIR" "$STATE_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR" "$DATA_DIR"
+run_as "git -C '$APP_DIR' rev-parse --git-dir >/dev/null 2>&1 || { git -C '$APP_DIR' init -q && git -C '$APP_DIR' config user.email 'lila@localhost' && git -C '$APP_DIR' config user.name 'Little Living Apps'; }"
+install -o "$SERVICE_USER" -g "$SERVICE_USER" -m 644 "$REPO_DIR/provision/AGENTS.md" "$APP_DIR/AGENTS.md"
+if [[ -d "$REPO_DIR/provision/memory-bank" && ! -d "$APP_DIR/memory-bank" ]]; then
+  cp -r "$REPO_DIR/provision/memory-bank" "$APP_DIR/memory-bank"
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR/memory-bank"
+fi
+
+# --- 2. Per-instance env file -----------------------------------------------------------------
+log "Writing $ENV_FILE"
+umask 077
+cat > "$ENV_FILE" <<EOF
+# little-living-apps instance: $NAME (generated by bin/new-instance). One brain, one app.
+TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
+ALLOWED_USER_IDS=$ALLOWED_USER_IDS
+WORKSPACE_DIR=$APP_DIR
+MEMORY_DIR=$MEMORY_DIR
+MANAGER_STATE_DIR=$STATE_DIR
+CODEX_HOME=$CODEX_HOME
+CODEX_SANDBOX_MODE=danger-full-access
+APP_PORT=$APP_PORT
+APP_PUBLIC_URL=$APP_PUBLIC_URL
+LILA_DOMAIN=$LILA_DOMAIN
+INSPECTOR_ENABLED=true
+INSPECTOR_PORT=$INSPECTOR_PORT
+INSPECTOR_TOKEN=$INSPECTOR_TOKEN
+EOF
+chmod 600 "$ENV_FILE"
+umask 022
+
+# --- 3. Manager template unit (host-level constants substituted once) --------------------------
+log "Installing systemd template unit lila-manager@.service; enabling lila-manager@$NAME"
+sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__REPO_DIR__|$REPO_DIR|g" -e "s|__MISE__|$MISE|g" \
+  "$REPO_DIR/deploy/lila-manager@.service" > /etc/systemd/system/lila-manager@.service
+systemctl daemon-reload
+systemctl enable "lila-manager@$NAME" >/dev/null
+
+# --- 4. Scaffold the app + install/start its template unit (delegates to bin/new-app) ----------
+log "Scaffolding the Rails 8 app at $APP_DIR (via bin/new-app, instance mode)"
+LILA_INSTANCE="$NAME" WORKSPACE_DIR="$APP_DIR" APP_PORT="$APP_PORT" LILA_DOMAIN="$LILA_DOMAIN" \
+  SERVICE_USER="$SERVICE_USER" ${SKIP_AUTH:+SKIP_AUTH="$SKIP_AUTH"} \
+  bash "$REPO_DIR/bin/new-app"
+
+# --- 5. Publish on the instance domain (Caddy) ------------------------------------------------
+if [[ -n "$LILA_DOMAIN" ]]; then
+  log "Publishing https://$LILA_DOMAIN via Caddy (/etc/caddy/sites/$NAME.caddy)"
+  mkdir -p /etc/caddy/sites
+  cat > "/etc/caddy/sites/$NAME.caddy" <<EOF
+# instance: $NAME — generated by bin/new-instance. Fronts the app (:$APP_PORT) and the Inspector
+# (:$INSPECTOR_PORT) for $LILA_DOMAIN. Imported by the main Caddyfile (import /etc/caddy/sites/*.caddy).
+$LILA_DOMAIN {
+	handle_path /_inspect/* {
+		reverse_proxy 127.0.0.1:$INSPECTOR_PORT
+	}
+	reverse_proxy 127.0.0.1:$APP_PORT
+}
+EOF
+  # Ensure the main Caddyfile imports the sites dir, even if it predates this feature.
+  if [[ -f /etc/caddy/Caddyfile ]] && ! grep -q 'import /etc/caddy/sites/' /etc/caddy/Caddyfile; then
+    sed -i '1i import /etc/caddy/sites/*.caddy' /etc/caddy/Caddyfile
+  fi
+  if command -v caddy >/dev/null 2>&1; then
+    caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1 || die "Caddy config invalid after adding $NAME — check /etc/caddy/sites/$NAME.caddy"
+    systemctl reload caddy 2>/dev/null || systemctl restart caddy
+  else
+    log "WARN: caddy not installed — site block written but not served. Install Caddy, then reload."
+  fi
+fi
+
+# --- 6. Codex auth (per-instance CODEX_HOME) + start the manager -------------------------------
+if run_as "CODEX_HOME='$CODEX_HOME' '$MISE' exec -- codex login status" >/dev/null 2>&1; then
+  log "Codex auth present for this instance — starting lila-manager@$NAME"
+  systemctl restart "lila-manager@$NAME"
+  log "Done. Message the new bot on Telegram to test instance '$NAME'."
+else
+  cat <<EOF
+
+────────────────────────────────────────────────────────────────────────────
+Instance '$NAME' is provisioned. One step left — authenticate Codex for THIS instance
+(its own CODEX_HOME; log into the SAME ChatGPT account), then start its manager:
+
+  sudo -u $SERVICE_USER -H CODEX_HOME=$CODEX_HOME $MISE exec -- codex login --device-auth
+  sudo systemctl start lila-manager@$NAME
+
+App:       https://${LILA_DOMAIN:-<set LILA_DOMAIN>}  (point DNS at this host first)
+Inspector: https://$LILA_DOMAIN/_inspect/?t=$INSPECTOR_TOKEN
+Logs:      journalctl -u lila-manager@$NAME -f
+────────────────────────────────────────────────────────────────────────────
+EOF
+fi

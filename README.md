@@ -74,13 +74,30 @@ minimal **Rails 8 + PWA** project (SQLite + the Solid stack, Hotwire, Rails' bui
 box. To publish it behind your own domain with automatic HTTPS, point DNS at the host and run Caddy
 with `deploy/Caddyfile`.
 
+**Several apps on one host.** The model stays *one brain → one app*; you just run it more than once.
+After `bootstrap.sh`, add an independent instance — its own Codex manager, Telegram bot, workspace,
+data dir, ports, and domain — with `bin/new-instance`:
+
+```bash
+sudo LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
+     TELEGRAM_BOT_TOKEN=<new-bot-token> \
+     bash bin/new-instance cm
+```
+
+Each instance runs under the systemd **template units** `lila-manager@<name>` / `lila-app@<name>`
+(reading `/etc/lila/<name>.env`), and gets its own Caddy site block at `/etc/caddy/sites/<name>.caddy`.
+Create a separate bot via @BotFather per instance (one bot can't be long-polled twice). Codex rides
+one ChatGPT subscription, so authenticate each instance's `CODEX_HOME` to the **same** account — watch
+concurrency if you run many at once.
+
 ## Layout
 
 | Path | What |
 |---|---|
 | `bootstrap.sh` | One-shot host setup: mise (Ruby+Node), Codex CLI, build, data dirs, systemd unit. |
 | `bin/new-app` | Thin scaffolder for the app: minimal Rails 8 + PWA (+ built-in auth), installs+starts its service. Run via `lila-new-app`. |
-| `deploy/` | `lila-manager.service`, `lila-app.service` (unit templates), `Caddyfile` (publish the app behind your domain). |
+| `bin/new-instance` | Stand up an *additional* living app on the same host (one brain → one app, multiplied): own env file, workspace, data dir, ports, bot, domain, under `lila-{manager,app}@<name>`. |
+| `deploy/` | `lila-manager.service`/`lila-app.service` (single-instance units) · `lila-manager@.service`/`lila-app@.service` (multi-instance templates) · `Caddyfile` (publishes the primary + imports per-instance site blocks). |
 | `.mise.toml` | Pinned Ruby + Node versions. |
 | `src/config.ts` | Env loading + validation; no API key required; **refuses to start if `OPENAI_API_KEY`/`CODEX_API_KEY` is set** (billing-flip guard — the only billing protection left). |
 | `src/app.ts` | Composition root: wires memory + orchestrator + manager backend + loop + snapshots; `ingestTelegramUpdate` (incl. photo intake), `persist`/`restore`. |

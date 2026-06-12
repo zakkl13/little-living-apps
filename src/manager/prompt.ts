@@ -110,6 +110,9 @@ export interface RuntimeFacts {
   appPublicUrl: string;
   /** Directory holding the single app the team builds and maintains (config.workspaceDir). */
   workspaceDir: string;
+  /** systemd unit for the app (config.appServiceName) — the unit a worker restarts for structural
+   *  changes. "lila-app" on a single-instance host; "lila-app@<name>" for a template instance. */
+  appServiceName: string;
 }
 
 function renderRuntime(r: RuntimeFacts): string {
@@ -124,7 +127,7 @@ operate it on your instruction; you have no hands of your own.
   to create a minimal Rails 8 + PWA app to build on.
 - Reload mode: a worker's edits to existing code go live on the NEXT request — no restart. Only
   structural changes (a new gem, an initializer, a route, a migration) need
-  \`sudo systemctl restart lila-app\`, which a worker can run.
+  \`sudo systemctl restart ${r.appServiceName}\`, which a worker can run.
 - Public URL: ${url}
 - The box is always on. There is no hibernation and no inbound port for the bot — you reach the
   user over Telegram by outbound long-poll, so nothing about the box needs to be publicly reachable

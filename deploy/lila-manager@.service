@@ -1,0 +1,36 @@
+# systemd TEMPLATE unit for a little-living-apps manager INSTANCE. One instance = one brain = one app
+# (the model never changes: each manager owns exactly one app). This is how you run several living
+# apps on a single host — each is a fully independent stack, isolated by its own per-instance env file.
+#
+# bin/new-instance (or bootstrap.sh) installs this template ONCE per host, substituting the host-level
+# __PLACEHOLDERS__. The %i instance name then selects everything per-instance via /etc/lila/%i.env
+# (its own Telegram bot token, WORKSPACE_DIR, CODEX_HOME, ports, domain). Enable an instance with:
+#
+#     sudo systemctl enable --now lila-manager@<name>
+#
+# The manager opens NO inbound port — it reaches Telegram by outbound long-poll. The disposable VM is
+# the security boundary. A cold restart is lossless (crash snapshot + persistent memory survive).
+[Unit]
+Description=little-living-apps manager [%i] (Telegram -> Codex manager + workers)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__REPO_DIR__
+EnvironmentFile=/etc/lila/%i.env
+# Tell the manager which app unit it owns, so the prompt hands workers the RIGHT restart command.
+Environment=LILA_APP_SERVICE=lila-app@%i
+# Worker self-validation: Playwright lives at a fixed, node-version-independent location (bootstrap
+# §4b), exposed here so Codex workers — children of this manager, inheriting its env — can
+# require("playwright") and `npx playwright …` from any cwd. Local node_modules still win for the
+# manager's own node process; this is only a fallback resolution path.
+Environment=NODE_PATH=/opt/lila/tooling/node_modules
+# mise exec resolves the pinned Ruby/Node (and the global codex bin) from .mise.toml in WorkingDirectory.
+ExecStart=__MISE__ exec -- npm start
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

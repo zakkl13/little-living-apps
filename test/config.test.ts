@@ -13,8 +13,14 @@ describe("loadConfig", () => {
     assert.deepEqual(c.allowedUserIds, [1, 2, 3]);
     assert.equal(c.sandboxMode, "danger-full-access");
     assert.equal(c.workspaceDir, "/srv/app");
+    assert.equal(c.appServiceName, "lila-app", "single-instance default unit");
     assert.equal(c.appPublicUrl, "", "no app published by default");
     assert.equal(c.telegramApiBaseUrl, "https://api.telegram.org");
+  });
+
+  it("takes the app service name from LILA_APP_SERVICE (template instance)", () => {
+    const c = loadConfig({ ...base, LILA_APP_SERVICE: "lila-app@cm" });
+    assert.equal(c.appServiceName, "lila-app@cm");
   });
 
   it("loads v0.3 Codex-manager config (no API key; memory/state/manager dirs + effort)", () => {

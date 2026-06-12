@@ -41,6 +41,7 @@ export const startManagerBackend: ManagerBackendFactory = async (ctx) => {
   const runtime: RuntimeFacts = {
     appPublicUrl: config.appPublicUrl,
     workspaceDir: config.workspaceDir,
+    appServiceName: config.appServiceName,
   };
   writeFileSync(join(config.managerDir, "AGENTS.md"), buildAgentsMd(runtime) + "\n");
 
