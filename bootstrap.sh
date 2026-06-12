@@ -54,6 +54,11 @@ if [[ ! -x "$MISE" ]]; then
 fi
 log "mise: $("$MISE" --version 2>/dev/null || echo unknown)"
 run_as "cd '$REPO_DIR' && '$MISE' trust && '$MISE' install"
+# Also promote the pinned toolchain to the GLOBAL default. Without this, `mise exec -- npm/node`
+# only resolves inside a dir that has a .mise.toml (i.e. the repo). The Playwright install (§4b, in
+# /opt/lila/tooling) and Codex workers (which run in arbitrary app subdirs) have no local config, so
+# they'd fail with "npm couldn't exec process". Keep these specs in sync with .mise.toml.
+run_as "'$MISE' use -g ruby@3.3 node@22"
 
 # --- 4. Codex CLI + build the manager ---------------------------------------------------------
 log "Installing @openai/codex (under the mise-managed Node)"
