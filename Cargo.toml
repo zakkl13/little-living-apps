@@ -2,6 +2,9 @@
 name = "lila-rs"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+description = "Telegram-driven manager agent that delegates to ephemeral workers and rides a Codex or Claude subscription"
+repository = "https://github.com/zakkl13/little-living-apps"
 
 [dependencies]
 anyhow = "1.0.102"

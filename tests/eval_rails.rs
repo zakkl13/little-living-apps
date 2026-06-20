@@ -52,8 +52,15 @@ fn pass(c: &Check, t: &EvalTranscript) -> bool {
 
 #[test]
 fn rails_fixture_planted_realities() {
-    if !ruby_available() || !rails_template_dir().join("bin/rails").exists() {
-        eprintln!("SKIP rails_fixture_planted_realities: ruby or built template absent");
+    // The template's gems (vendor/bundle, 78MB) are gitignored and installed once by
+    // setup-rails.sh — without them `bin/rails` can't boot, so skip (e.g. on CI, which has ruby +
+    // the committed template source but no `bundle install`).
+    let template = rails_template_dir();
+    if !ruby_available()
+        || !template.join("bin/rails").exists()
+        || !template.join("vendor/bundle").exists()
+    {
+        eprintln!("SKIP rails_fixture_planted_realities: ruby, template, or vendored gems absent");
         return;
     }
 
