@@ -3,7 +3,8 @@
 A Telegram-driven **manager agent** that delegates to ephemeral **workers**, keeps durable
 git-backed **memory**, and rides a **Codex *or* Claude subscription** (never metered API billing).
 One self-contained binary per host instance. This is the Rust reimplementation of the original
-TypeScript agent (`../sprite-codex-bot`) — same architecture, idiomatic async Rust.
+TypeScript agent — same architecture, idiomatic async Rust. (The original TypeScript implementation
+is preserved on the `legacy-typescript` branch.)
 
 ## Architecture
 
