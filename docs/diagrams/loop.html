@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Little Living Apps — the loop (whiteboard)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; }
+  #stage {
+    position: relative;
+    width: 1540px;
+    height: 1020px;
+    background: #fbfbf6;
+    border: 2px solid #e7e6dd;
+    border-radius: 18px;
+    overflow: hidden;
+    font-family: "Bradley Hand", "Chalkboard SE", "Comic Sans MS", cursive;
+    color: #20262e;
+  }
+  svg.layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .lbl { position: absolute; transform: translate(-50%, -50%); text-align: center; line-height: 1.08; }
+
+  .title { left: 64px; top: 70px; transform: none; font-size: 56px; font-weight: 700; }
+  .title .hl {
+    background: linear-gradient(transparent 55%, rgba(255, 214, 64, .65) 55% 92%, transparent 92%);
+    padding: 0 4px;
+  }
+  .subtitle { left: 68px; top: 138px; transform: none; font-size: 28px; color: #5a6470; }
+
+  .station { font-size: 38px; font-weight: 700; }
+  .station .n { font-size: 24px; color: #2b6cb0; }
+
+  .center { font-size: 30px; }
+  .center .big { font-size: 44px; font-weight: 700; }
+  .center .sm { font-size: 24px; color: #5a6470; }
+
+  .in { font-size: 32px; font-weight: 700; }
+  .in .note { font-size: 22px; color: #7b8794; font-weight: 400; }
+
+  .out { font-size: 34px; font-weight: 700; color: #2f9e44; }
+  .appface { font-size: 22px; color: #5a6470; }
+
+  .data { font-size: 30px; font-weight: 700; color: #d9822b; }
+  .data .note { font-size: 21px; color: #b08043; font-weight: 400; }
+
+  .trace { font-size: 28px; font-weight: 700; color: #8a5cf6; }
+  .trace .note { font-size: 21px; color: #9a86c4; font-weight: 400; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <svg class="layer" id="svg" viewBox="0 0 1540 1020"></svg>
+
+  <div class="lbl title"><span class="hl">how the loop works</span></div>
+</div>
+
+<script src="rough.umd.js"></script>
+<script>
+const stage = document.getElementById('stage');
+const svg = document.getElementById('svg');
+const rc = rough.svg(svg);
+const INK = '#20262e', BLUE = '#2b6cb0', GREEN = '#2f9e44', AMBER = '#d9822b', PURPLE = '#8a5cf6', GRAY = '#9aa3ad';
+
+const cx = 720, cy = 512, r = 188;
+function add(n) { svg.appendChild(n); }
+function pos(deg, rr = r) { const a = deg * Math.PI / 180; return { x: cx + rr * Math.sin(a), y: cy - rr * Math.cos(a) }; }
+function label(cls, x, y, html) {
+  const d = document.createElement('div');
+  d.className = 'lbl ' + cls; d.style.left = x + 'px'; d.style.top = y + 'px';
+  d.innerHTML = html; stage.appendChild(d); return d;
+}
+function arrowhead(x, y, ang, color, sw, len = 20) {
+  const s = 0.45, o = { roughness: 1.3, stroke: color, strokeWidth: sw };
+  add(rc.line(x, y, x - len * Math.cos(ang - s), y - len * Math.sin(ang - s), o));
+  add(rc.line(x, y, x - len * Math.cos(ang + s), y - len * Math.sin(ang + s), o));
+}
+function arrow(x1, y1, x2, y2, color = INK, sw = 3, dash = null) {
+  const o = { roughness: 1.7, bowing: 1.2, stroke: color, strokeWidth: sw };
+  if (dash) o.strokeLineDash = dash;
+  add(rc.line(x1, y1, x2, y2, o));
+  arrowhead(x2, y2, Math.atan2(y2 - y1, x2 - x1), color, sw);
+}
+function curveArrow(pts, color, sw, dash = null) {
+  const o = { roughness: 1.5, bowing: 1, stroke: color, strokeWidth: sw };
+  if (dash) o.strokeLineDash = dash;
+  add(rc.curve(pts, o));
+  const a = pts[pts.length - 2], b = pts[pts.length - 1];
+  arrowhead(b[0], b[1], Math.atan2(b[1] - a[1], b[0] - a[0]), color, sw);
+}
+
+// ---- the loop circle ----
+add(rc.circle(cx, cy, r * 2, { roughness: 2.1, bowing: 2.4, stroke: INK, strokeWidth: 3.6 }));
+// clockwise rotation arrowheads on the ring
+[60, 180, 300].forEach(d => {
+  const p = pos(d);
+  const tan = (d + 90) * Math.PI / 180; // clockwise tangent
+  arrowhead(p.x, p.y, tan, INK, 3.4, 24);
+});
+
+// ---- hub ----
+label('center', cx, cy, `<span class="big">agent loops</span>`);
+
+// ---- inputs (left) ----
+arrow(170, 392, pos(292).x - 16, pos(292).y, INK, 4);
+label('in', 168, 348, `📱 you text it`);
+
+arrow(170, 600, pos(248).x - 18, pos(248).y + 6, BLUE, 3);
+label('in', 168, 556, `💓 a heartbeat <span class="note">(soon)</span>`);
+
+// ---- output: the app (right) ----
+arrow(pos(68).x + 16, pos(68).y, 1196, 452, GREEN, 4);
+label('out', 1320, 412, `your app<br>improves`);
+add(rc.rectangle(1196, 500, 200, 140, { roughness: 1.8, stroke: INK, strokeWidth: 2.6 }));
+add(rc.line(1196, 536, 1396, 536, { roughness: 1.6, stroke: INK, strokeWidth: 2 }));
+add(rc.line(1222, 568, 1366, 568, { roughness: 1.6, stroke: GRAY, strokeWidth: 1.8 }));
+add(rc.line(1222, 596, 1330, 596, { roughness: 1.6, stroke: GRAY, strokeWidth: 1.8 }));
+label('appface', 1296, 672, `…bigger each turn`);
+
+// ---- feedback: the app feeds logs & data back into the loop ----
+curveArrow(
+  [[1296, 648], [1296, 858], [780, 902], [pos(165).x + 4, pos(165).y + 10]],
+  AMBER, 3.4
+);
+label('data', 1010, 900, `logs &amp; data <span class="note">(soon)</span>`);
+
+// ---- traces: a separate dotted loop that tunes the agent ----
+// out of the agent, up to "traces", then back in as "tune the agent"
+curveArrow([[pos(36).x, pos(36).y], [930, 248], [812, 176]], PURPLE, 2.6, [2, 11]);
+label('trace', 988, 196, `traces`);
+curveArrow([[628, 176], [510, 248], [pos(324).x, pos(324).y]], PURPLE, 2.6, [2, 11]);
+label('trace', 452, 214, `tune the<br>agent`);
+label('trace', 720, 104, `hill climbing loop`);
+
+window.__ready = true;
+</script>
+</body>
+</html>

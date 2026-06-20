@@ -1,98 +1,304 @@
-# little-living-apps — Rust agent (`lila`)
+<div align="center">
 
-A Telegram-driven **manager agent** that delegates to ephemeral **workers**, keeps durable
-git-backed **memory**, and rides a **Codex *or* Claude subscription** (never metered API billing).
-One self-contained binary per host instance. This is the Rust reimplementation of the original
-TypeScript agent — same architecture, idiomatic async Rust. (The original TypeScript implementation
-is preserved on the `legacy-typescript` branch.)
+# Little Living Apps
 
-## Architecture
+### Software you can just talk to.
 
-A single async task owns all mutable manager state; producers feed it over channels, so **turns are
-serialized** (the core invariant that keeps memory + transcript coherent without locks).
+Text it into being. Text it as it grows.
 
+<a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot 'build me a reading log'; an agent team scaffolds a working app, then ships a requested feature — tags, filters, and a chart — into the same app." width="100%"></a>
+
+[![tests](https://img.shields.io/badge/tests-passing-brightgreen)](#evals)
+[![license](https://img.shields.io/badge/license-MIT-blue)](#license)
+[![no API key](https://img.shields.io/badge/billing-your%20subscription-8a2be2)](#tech-involved)
+[![runs behind NAT](https://img.shields.io/badge/network-no%20open%20ports-555)](#how-it-works)
+
+</div>
+
+---
+
+## What this is
+
+**Little Living Apps is a living-app agent framework.** You text a manager on Telegram in plain
+language; a small team of agents builds, ships, and then *keeps maintaining* a real web app for you —
+indefinitely.
+
+The framework deals in **apps and functionality, not code**. You describe what the app should *do* —
+"build me a reading log," "add tags by genre," "filter the list" — and the agents own every line,
+every deploy, and every change after that. You never open an editor. You never read a diff.
+
+"Living" is the whole point: the agent team doesn't generate-and-leave. It keeps planning,
+remembering, and shipping against the *same* app, so next week's "add a chart" lands in the same
+place this week's reading log did.
+
+The shape is small enough to hold in your head: **one manager, one app, one box you own.** The whole
+thing runs over a Telegram long-poll — no open ports, no public URL, no cloud bill from us, because
+there is no us. You bring the host, the bot, and your existing ChatGPT or Claude subscription. That's
+the entire dependency list.
+
+### A day in the life
+
+> **You** — build me a reading log. track title, author, rating, a few notes.
+>
+> **Manager** — On it. Scaffolding a Rails PWA, wiring up the model and a list/detail view.
+>
+> *…a few minutes pass…*
+>
+> **Manager** — Done. Add/edit/rate/note all working; auth is on. Verified in a real browser —
+> here's the list view after I added two test books. It's live at `127.0.0.1:3000` (private to the
+> box until you publish). Want it on a domain?
+> 🖼️ *screenshot attached*
+>
+> **You** — yeah, books.mydomain.com
+>
+> **Manager** — Published behind HTTPS at **books.mydomain.com**. Certificate issued, redirect from
+> http in place.
+>
+> **You** — add tags by genre, multiple per book, filter the list by tag
+>
+> **Manager** — Got it — that's a migration plus a filter UI, I'll have it tonight.
+>
+> *…next morning…*
+>
+> **Manager** — Tags shipped. Many-per-book, the list filters by tag, backfilled your existing
+> entries as "unsorted." Validated the filter end to end before this message.
+
+You never opened an editor. You never saw the code. You don't have to.
+
+## Quick start
+
+Fresh Ubuntu 22.04+/Debian 12 host. No API key required.
+
+### Let an agent set it up for you
+
+The fastest path is to hand the whole setup to Claude Code or Codex. Install the `setup-living-app`
+skill and your agent drives it end to end — VPS sizing, SSH, the Telegram bot, `.env`, bootstrap, the
+one-time subscription login, and an optional domain with HTTPS:
+
+```bash
+npx skills add zakkl13/little-living-apps -a claude-code -a codex -g
 ```
-Telegram long-poll ─┐
-                    ├─► [serialized loop] ─► ManagerDriver ─► backend (Codex│Claude CLI)
-worker completions ─┘         │                                   │ MCP (HTTP+bearer)
-                              ▼                                    ▼
-                        snapshot (crash-safe)              Lila MCP server  ── memory_* tools
-                                                           (rmcp + axum)    └─ subagent_start ─► Orchestrator ─► ephemeral workers
+
+Then run `/setup-living-app` (Claude Code) or `$setup-living-app` (Codex) and answer the prompts.
+
+### Or do it by hand
+
+```bash
+git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
+cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
+sudo bash bootstrap.sh                    # mise → Ruby+Node, agent CLI, build, data dirs, systemd
+
+# one-time: log the box into your ChatGPT subscription (Codex backend)
+sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex \
+  ~/.local/bin/mise exec -- codex login --device-auth
+
+sudo systemctl start lila-manager@primary
+journalctl -u lila-manager@primary -f      # watch it think
 ```
 
-- **Manager** has "no hands": its only tools are the loopback **Lila MCP server** (`memory_*` +
-  `subagent_start`). Shell/web off, read-only sandbox.
-- **Workers** are single-shot: born for one objective, report back once as an event, then gone.
-- **Memory** is a `/memories` git repo of markdown + a derived SQLite FTS5 index.
-- **Lossless restart**: backend session id + queue + usage are snapshotted after every turn.
-- **Billing guard**: the bot refuses to start if the active backend's API key is set (it would flip
-  off the subscription onto metered billing); those keys are stripped from every spawned CLI's env.
+`bootstrap.sh` is idempotent — re-run after pulling, then `systemctl restart lila-manager@primary`.
 
-| Concern | Crate |
+### Slash commands
+
+Now message your bot. Anything you send that isn't a command is handled by the manager — it
+delegates, builds, and reports back. The control commands:
+
+| Send | Does |
 |---|---|
-| async runtime | `tokio` |
-| Codex backend | `codex-client-sdk` |
-| Claude backend | `claude-agent-sdk-rust` |
-| MCP server | `rmcp` + `axum` |
-| memory | `rusqlite` (FTS5) + shell-out `git` |
-| transport | `reqwest` |
-| logging | `tracing` |
+| *anything* | the manager handles it — delegates, builds, reports back |
+| `/help` | the command list (also `/start`) |
+| `/status` | active workers, pending events, backend, and memory path |
+| `/new` | fresh manager thread (long-term memory is kept) |
+| `/backend [codex \| claude]` | show or hot-swap the agent backend (restarts; memory kept) |
 
-## CLI
+### More than one app
 
-The binary is CLI-first (`lila <command>`): `run` is the daemon; the rest are host stand-up / day-2
-ops that double as the integration-test surface.
+The model is always *one manager, one app*. Want more apps? Run it more than once. Each instance gets
+its own manager, Telegram bot, workspace, ports, and domain:
 
-```
-lila run             # the long-lived manager daemon (Telegram long-poll + serialized loop)
-lila config-check    # validate env + billing guard (exits non-zero on error)
-lila doctor          # config + backend CLI availability
-lila status          # persisted runtime state from the snapshot
-lila backend [codex|claude]   # show/persist the active backend
-lila memory view <path> | search <query>   # inspect/repair memory
-lila mcp serve       # run the Lila MCP server standalone (debugging)
+```bash
+sudo LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
+     TELEGRAM_BOT_TOKEN=<new-bot-token> \
+     bash bin/new-instance cm
 ```
 
-## Build & run
+Every instance — the first one (`primary`) and every addition — runs under the same systemd template
+units. Create one bot per instance via @BotFather (a bot can't be long-polled twice).
 
-Requires the `codex` and/or `claude` CLI on `PATH`, authenticated to your subscription.
+## Security
 
-```sh
-cargo build --release
-TELEGRAM_BOT_TOKEN=… ALLOWED_USER_IDS=123456 ./target/release/lila run
+> **The host is the boundary. Run this on a disposable box you'd hand an agent — a fresh VM, never
+> your laptop.**
+
+That single sentence is the whole security model, and it's a *feature*: there's nothing subtle to
+get wrong.
+
+- **The host is the boundary.** Workers run with `danger-full-access` and never pause for approval —
+  the manager hands them the whole box. So the box must be one you're fine handing over: a throwaway
+  VM, not a machine with anyone else's data on it.
+- **Single owner.** Only the Telegram user IDs in `ALLOWED_USER_IDS` reach the model. Everyone else
+  gets a refusal at the door.
+- **Private until you publish.** Outbound long-poll means nothing on the box is reachable from the
+  internet — not until you deliberately point a domain at the app the agents built.
+- **It won't spend your money behind your back.** The bot rides your subscription, never metered API
+  billing. It *refuses to start* if the active backend's pay-per-token key is set — that guard is the
+  last line between you and a surprise invoice.
+
+## How it works
+
+The industry is converging on an idea: the leverage in agents isn't the model, it's the **loop you
+build around it** — *"the potential in agents is in the loops you build around them"*
+([LangChain, "The Art of Loop Engineering"](https://www.langchain.com/blog/the-art-of-loop-engineering)).
+Little Living Apps is that idea, made literal. It isn't a request-and-response bot; it's a **flywheel**
+that keeps turning, and every turn ships a change *and* deepens memory — so the next turn starts
+smarter.
+
+<div align="center">
+  <img src="docs/loop.png" alt="A hand-drawn whiteboard sketch: 'you text it' (plus a heartbeat) feeds an agent loop, which improves your app. The running app feeds logs and data back into the loop, and a separate dotted 'hill climbing loop' reads the agent's traces to tune the agent itself." width="92%">
+</div>
+
+One manager takes **one turn at a time** off a single event queue. A trigger arrives — today you
+texting it, on the roadmap a heartbeat tick — and the turn walks three beats:
+
+1. **Plan** — the manager reasons over long-term memory and decides what to do. **It has no hands:**
+   it runs in a read-only sandbox with shell and network *off*, and cannot touch the box directly. Its
+   only tools are a handful served over loopback (`memory_*` and `subagent_start`). It thinks; it
+   doesn't reach. A plain message *is* the reply; `NO_REPLY` lets it stay silent on noise.
+2. **Build** — `subagent_start` spins up **ephemeral workers** (in parallel when the work is parallel).
+   Each does the concrete work with real shell, real git, real files, **validates before claiming
+   "done,"** ships to the box, and is **gone** after one objective. No roster, no resume, no babysitting.
+3. **Remember** — what matters is written to a git-backed memory repo and reported back as a
+   `worker_event`, which re-enters the queue and can drive the next turn.
+
+Two properties make the wheel keep its momentum:
+
+- **Continuity lives in the world, not in agent state.** Everything that matters is the workspace, its
+  git history, and the memory repo — so nothing depends on a worker staying alive. The whole system is
+  **restart-lossless**: manager thread, event queue, and memory all survive a reboot and pick up
+  mid-thought.
+- **Memory is the flywheel's mass.** It accumulates across turns, so each cycle makes the next one
+  better — the outer, compounding loop that loop-engineering calls *hill-climbing*.
+
+### Two feedback loops close the flywheel
+
+The turn above is the inner loop. What makes the app *living* is that its own behavior comes back
+around — on the roadmap (see `ROADMAP.md`), two outer loops feed it:
+
+- **The app feeds the agent.** The running app emits **logs and data** about how it actually behaves
+  in production, and that flows back into the loop as another trigger — so the agent can notice a slow
+  path or a regression and fix it before you ever complain. The app improves the app.
+- **Traces tune the agent — a separate system.** Distinct from the product loop above, this one
+  watches the **agent's own traces** (what it did, where it went wrong) and feeds that back to improve
+  the *agent itself*, not the app. It's the dotted loop in the sketch: a meta layer that grades
+  behavior over time and adjusts how the agent works. In loop-engineering terms it's the
+  **hill-climbing loop** — each pass makes every future turn a little better.
+
+## Tech involved
+
+Every piece here was chosen for a reason, and each choice bought something and cost something. The
+honest ledger:
+
+### Claude or Codex — the agent backend
+
+The manager brain and the workers both run on a subscription-billed backend, selected by
+`AGENT_BACKEND` (default `codex`). Both ride a subscription, never metered API billing, behind the
+same internal seams.
+
+| | `codex` (default) | `claude` |
+|---|---|---|
+| SDK | `@openai/codex-sdk` | `@anthropic-ai/claude-agent-sdk` |
+| Subscription | ChatGPT | Claude Pro/Max |
+| One-time host auth | `codex login --device-auth` | `claude setup-token` |
+| Pay-per-token key (must be **unset**) | `OPENAI_API_KEY` / `CODEX_API_KEY` | `ANTHROPIC_API_KEY` |
+
+*Why:* these are the two frontier coding agents that can be driven off a flat-rate consumer
+subscription instead of metered API billing — so the running cost is a plan you already pay for, not a
+meter that ticks while agents work. Keeping both behind one seam means you can **swap on a live
+instance** with `/backend claude` (or `/backend codex`): it persists the choice and restarts clean,
+losing no memory. *Cost:* a ToS caveat on the Claude backend (below), and you watch concurrency if you
+run many instances on one account.
+
+> **Subscription-terms note.** Anthropic's docs say third-party developers may not *offer* claude.ai
+> login or rate limits in products built on the Agent SDK without prior approval. This project is
+> single-owner, bring-your-own-everything, run on a box you own and not monetized — i.e. personal
+> use, the same posture under which the Codex backend rides a ChatGPT subscription. Don't turn around
+> and offer it to other people without sign-off.
+
+### Telegram — the interface
+
+The owner talks to the manager over a Telegram bot, polled outbound with `getUpdates`.
+
+*Why:* it buys **zero infra** — no inbound port, no public URL, no TLS to manage; the bot runs behind
+NAT or on a home box, and it's a chat UI everyone already has on every device. The outbound long-poll
+is also what makes the box private by default: nothing is reachable from the internet until you
+publish. *Cost:* it's a chat, not a rich dashboard. (For watching the *agent system* itself, there's
+a local Inspector.)
+
+### Ruby on Rails — what the agents build
+
+Ask for an app and a worker scaffolds it with `lila-new-app`: a minimal **Rails 8 + PWA** project —
+SQLite on the Solid stack, Hotwire, Rails' built-in auth — running in **reload mode**, so edits go
+live on the next request. It binds to `127.0.0.1:3000`, private to the box. To publish behind your own
+domain with **automatic HTTPS**, point DNS at the host and set `LILA_DOMAIN` when you run
+`bootstrap.sh`; it installs Caddy and writes the site block for you.
+
+*Why:* Rails 8 is batteries-included — auth, DB, and a PWA on day one — and reload mode means edits go
+live without a deploy step, which is exactly the loop a maintaining agent needs. The substrate is
+kept deliberately thin (Rails defaults plus PWA and auth) so the agents build *on top of* a sane
+baseline instead of fighting a heavy template. *Cost:* it's opinionated; you're building in Rails.
+
+### TypeScript — the orchestrator
+
+The manager loop, event queue, MCP tools, worker runner, and durability layer that hold the system
+together are written in TypeScript on Node.
+
+*Why:* the agent SDKs (`@openai/codex-sdk`, `@anthropic-ai/claude-agent-sdk`) are first-class in the
+TypeScript ecosystem, and a typed orchestrator lets every external boundary be an injectable seam —
+which is what makes the deterministic test suite (below) able to run the *real* loop against fakes.
+*Cost:* a two-language system — TypeScript for the brain, Ruby for the apps it builds.
+
+## Evals
+
+We verify in two layers, because agents have a deterministic half and a judgment half:
+
+- **`npm test`** covers everything deterministic. Every external boundary — the agent backends,
+  Telegram, the worker runner — is an injectable seam, so the **real** runtime loop (queue, memory,
+  MCP tools, orchestrator, durability) runs against fakes while git + sqlite memory run for real. The
+  headline e2e drives a full owner-message → parallel-workers → memory-write → reply cascade and
+  proves a simulated cold restart loses nothing.
+
+- **`npm run eval`** measures what tests can't: how the **real** manager and **real** workers
+  behave. A trial boots the full production system — real model, real workers, real shell in a real
+  workspace — with the single substitution that Telegram deliveries are captured for grading instead
+  of sent. It grades **outcomes and order, never tool paths**: did the work actually run, did the
+  agent validate before claiming done, did it stay quiet on noise, did it remember. Agents that find
+  a smarter route still pass.
+
+```bash
+npm install
+npm run typecheck
+npm test                       # deterministic suite (real loop + memory, faked boundaries)
+npm run eval -- --smoke        # cheapest live pulse against the real model
 ```
 
-Key env vars: `AGENT_BACKEND` (`codex`|`claude`), `TELEGRAM_BOT_TOKEN`, `ALLOWED_USER_IDS`,
-`WORKSPACE_DIR`, `MEMORY_DIR`, `MANAGER_STATE_DIR`, `MANAGER_REASONING_EFFORT`, `LILA_DOMAIN`,
-`LOG_LEVEL`. See `src/config.rs` for the full set and defaults.
+## Status
 
-## Testing
+Host-native and runnable today. The manager runs on a plain VM over long-poll; the app substrate is
+a minimal Rails 8 + PWA scaffold in reload mode. On the roadmap: giving the apps first-class
+self-observability, so the team can watch and maintain against real runtime behavior the way an
+engineer leans on an APM dashboard (see `ROADMAP.md`).
 
-Integration coverage is the headline metric — tests drive the **compiled binary** through its CLI
-against a hermetic fake Telegram server + a scripted fake backend (no subscription needed).
+## Adopt it. Fork it. Run it on a box you own.
 
-```sh
-cargo test                 # unit + binary-driven e2e + MCP integration (all hermetic)
-cargo test --test live_codex -- --ignored --nocapture   # LIVE: real Codex model + MCP attach
-```
+> **Bring your own everything.** This is an open pattern, not a service: your host, your Telegram
+> bot, your subscription. There's nothing to sign up for and nothing to pay us — there is no us.
 
-The fake backend is inert in production — it only activates when `LILA_FAKE_BACKEND` is set.
+If the idea of an app with a live-in maintainer appeals to you, the fastest way to get it is to
+stand one up. The Quick start is a handful of commands — or hand the whole thing to an agent with the
+`setup-living-app` skill.
 
-## Quality gates (CI)
+## License
 
-- `cargo fmt --check`
-- `cargo clippy --all-targets -- -D warnings` (`#![forbid(unsafe_code)]`; no `unwrap`/`expect` in
-  non-test code)
-- `scripts/check-complexity.sh` — **cyclomatic complexity ≤ 6** for every function (via `lizard`)
-- `cargo-deny` + `cargo-audit` (advisories / licenses / supply chain)
-
-## Deploy
-
-`deploy/deploy-rs.sh` builds a static musl binary, ships it via S3, and installs the
-`deploy/lila-rs@.service` systemd template unit over SSM — standing the Rust instance up
-side-by-side with the live TS instances for UAT. See the script header for prerequisites.
-
-## Principles
-
-No `unsafe`. No global mutable state (owned values + channels; cross-task sharing is explicit
-`Arc`/channels). Obsess over integration tests against the real binary.
+MIT.
+</content>
+</invoke>
