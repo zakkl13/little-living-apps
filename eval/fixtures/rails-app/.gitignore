@@ -1,0 +1,8 @@
+# Vendored gems are built once by eval/fixtures/setup-rails.sh, not committed (78MB).
+/vendor/bundle
+/.bundle/
+# Rails ephemerals
+/log/*
+/tmp/*
+/storage/*
+!/storage/.keep

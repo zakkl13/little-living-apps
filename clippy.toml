@@ -1,0 +1,5 @@
+# Complexity caps (enforced via `cargo clippy -D warnings`; see also the rust-code-analysis CI gate
+# which is the authoritative cyclomatic <=6 check).
+cognitive-complexity-threshold = 6
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 6

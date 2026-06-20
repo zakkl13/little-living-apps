@@ -1,0 +1,23 @@
+[Unit]
+# systemd template unit for a Rust little-living-apps manager instance: `lila-rs@<instance>`.
+# One self-contained static binary; env from /etc/lila/<instance>.env. Restart=always makes a crash
+# or a `/backend` swap (which exits 0) come straight back — lossless thanks to the snapshot + memory.
+Description=little-living-apps (Rust) manager — %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+EnvironmentFile=/etc/lila/%i.env
+# Per-instance state/memory/workspace are set in the env file; the binary is arch-matched musl.
+ExecStart=/opt/lila/bin/lila run
+Restart=always
+RestartSec=2
+# Don't let a stray API key flip billing: the binary already refuses to start, but be explicit.
+Environment=RUST_BACKTRACE=1
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

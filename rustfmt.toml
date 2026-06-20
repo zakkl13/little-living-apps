@@ -1,0 +1,6 @@
+# Human-readable formatting. Stable keys only; nightly-only niceties (imports_granularity,
+# group_imports, wrap_comments, comment_width, format_code_in_doc_comments) are applied via
+# `cargo +nightly fmt` when available.
+max_width = 100
+edition = "2024"
+use_small_heuristics = "Default"

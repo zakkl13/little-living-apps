@@ -1,0 +1,10 @@
+/target
+
+# Eval run artifacts (per-trial transcripts + reports)
+/eval/results/
+# The Rails fixture's vendored gems are built locally by eval/fixtures/setup-rails.sh (78MB), not committed
+/eval/fixtures/rails-app/vendor/bundle/
+/eval/fixtures/rails-app/.bundle/
+/eval/fixtures/rails-app/log/
+/eval/fixtures/rails-app/tmp/
+/eval/fixtures/rails-app/storage/*.sqlite3*
