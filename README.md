@@ -86,7 +86,7 @@ Then run `/setup-living-app` (Claude Code) or `$setup-living-app` (Codex) and an
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-sudo bash bootstrap.sh                    # mise → Ruby+Node, agent CLI, build, data dirs, systemd
+sudo bash bootstrap.sh                    # Ruby+Node+Rust, agent CLI, builds the lila binary, systemd
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
 sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex \
@@ -206,7 +206,7 @@ same internal seams.
 
 | | `codex` (default) | `claude` |
 |---|---|---|
-| SDK | `@openai/codex-sdk` | `@anthropic-ai/claude-agent-sdk` |
+| Driver | `codex-client-sdk` (Rust) → `codex` CLI | `claude-agent-sdk-rust` → `claude` CLI |
 | Subscription | ChatGPT | Claude Pro/Max |
 | One-time host auth | `codex login --device-auth` | `claude setup-token` |
 | Pay-per-token key (must be **unset**) | `OPENAI_API_KEY` / `CODEX_API_KEY` | `ANTHROPIC_API_KEY` |
@@ -247,27 +247,32 @@ live without a deploy step, which is exactly the loop a maintaining agent needs.
 kept deliberately thin (Rails defaults plus PWA and auth) so the agents build *on top of* a sane
 baseline instead of fighting a heavy template. *Cost:* it's opinionated; you're building in Rails.
 
-### TypeScript — the orchestrator
+### Rust — the orchestrator
 
 The manager loop, event queue, MCP tools, worker runner, and durability layer that hold the system
-together are written in TypeScript on Node.
+together are written in idiomatic async **Rust** — one self-contained binary per host instance
+(`lila`), driving the `codex`/`claude` CLIs over their JSON event protocols.
 
-*Why:* the agent SDKs (`@openai/codex-sdk`, `@anthropic-ai/claude-agent-sdk`) are first-class in the
-TypeScript ecosystem, and a typed orchestrator lets every external boundary be an injectable seam —
-which is what makes the deterministic test suite (below) able to run the *real* loop against fakes.
-*Cost:* a two-language system — TypeScript for the brain, Ruby for the apps it builds.
+*Why:* the orchestrator is the part that must never lose a message, double-reply, or corrupt memory,
+so it's built for exactly that — a single serialized loop, no global mutable state, no `unsafe`, and
+every external boundary an injectable seam, which is what lets the deterministic suite (below) drive
+the *real compiled binary* against fakes. CI denies clippy warnings and caps cyclomatic complexity at
+6 per function. It ships as one binary — no runtime, no `node_modules` for the brain on the host.
+*Cost:* a two-language system — Rust for the brain, Ruby for the apps it builds; and the host builds
+that binary once at `bootstrap.sh` time (a few minutes) rather than installing a prebuilt package.
 
 ## Evals
 
 We verify in two layers, because agents have a deterministic half and a judgment half:
 
-- **`npm test`** covers everything deterministic. Every external boundary — the agent backends,
-  Telegram, the worker runner — is an injectable seam, so the **real** runtime loop (queue, memory,
+- **`cargo test`** covers everything deterministic. Every external boundary — the agent backends,
+  Telegram, the worker runner — is an injectable seam, so the **real** compiled binary (queue, memory,
   MCP tools, orchestrator, durability) runs against fakes while git + sqlite memory run for real. The
-  headline e2e drives a full owner-message → parallel-workers → memory-write → reply cascade and
-  proves a simulated cold restart loses nothing.
+  headline e2e spawns `lila run` against a fake Telegram server + fake agent CLIs and drives a full
+  owner-message → workers → memory-write → reply cascade, then proves a `SIGTERM` cold restart loses
+  nothing.
 
-- **`npm run eval`** measures what tests can't: how the **real** manager and **real** workers
+- **`lila-eval`** measures what tests can't: how the **real** manager and **real** workers
   behave. A trial boots the full production system — real model, real workers, real shell in a real
   workspace — with the single substitution that Telegram deliveries are captured for grading instead
   of sent. It grades **outcomes and order, never tool paths**: did the work actually run, did the
@@ -275,10 +280,9 @@ We verify in two layers, because agents have a deterministic half and a judgment
   a smarter route still pass.
 
 ```bash
-npm install
-npm run typecheck
-npm test                       # deterministic suite (real loop + memory, faked boundaries)
-npm run eval -- --smoke        # cheapest live pulse against the real model
+cargo test                                      # deterministic suite (compiled binary, faked boundaries)
+cargo clippy --all-targets -- -D warnings       # lints (CI denies warnings)
+cargo run --release --bin lila-eval -- --smoke  # cheapest live pulse against the real model
 ```
 
 ## Status

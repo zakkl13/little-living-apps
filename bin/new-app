@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# bin/new-app — scaffold ONE instance's app as a minimal Rails 8 + PWA project, then run it under
+# systemd in reload mode. Deliberately thin: it leans on Rails 8's own defaults (SQLite, the
+# Solid Queue/Cache/Cable stack, Hotwire, PWA stubs) and generators rather than vendoring a template.
+# No CRUD, no models — just a clean, installable Rails 8 app the agent builds ON TOP of.
+#
+# Always runs in INSTANCE mode: every app — including the primary — is a systemd template instance
+# lila-app@<instance> serving /srv/<instance> and reading /etc/lila/<instance>.env. The caller sets
+# LILA_INSTANCE (bootstrap.sh → "primary"; bin/new-instance → the new name; the lila-new-app wrapper
+# forwards the running manager's instance). There is no single-instance literal unit anymore.
+#
+#   sudo LILA_INSTANCE=primary bash bin/new-app   # scaffold + install + start lila-app@primary
+#   SKIP_AUTH=1 sudo LILA_INSTANCE=… bash bin/new-app   # skip the built-in auth generator
+#
+# Idempotent: if the app is already scaffolded it only re-installs/starts the service.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+log() { printf '\033[1;35m[new-app]\033[0m %s\n' "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "Run with sudo (needs systemd): sudo bash bin/new-app"
+
+SERVICE_USER="${SERVICE_USER:-${SUDO_USER:-}}"
+[[ -n "$SERVICE_USER" && "$SERVICE_USER" != "root" ]] ||
+  die "Could not determine a non-root service user. Re-run via sudo from your normal account, or set SERVICE_USER=<name>."
+USER_HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)"
+MISE="$USER_HOME/.local/bin/mise"
+[[ -x "$MISE" ]] || die "mise not found at $MISE — run bootstrap.sh first."
+
+# Which instance's app: fixes the app dir (/srv/<instance>) and the systemd template unit
+# (lila-app@<instance>). Required — there is no non-instance fallback.
+INSTANCE="${LILA_INSTANCE:-}"
+[[ -n "$INSTANCE" ]] ||
+  die "LILA_INSTANCE is not set. Run via bootstrap.sh / bin/new-instance, or the lila-new-app wrapper (which forwards the manager's instance)."
+INSTANCE_ENV="/etc/lila/$INSTANCE.env"
+APP_DIR="${WORKSPACE_DIR:-/srv/$INSTANCE}"
+# APP_PORT is cosmetic here (the template unit reads ${APP_PORT} from the env file); source it from the
+# instance's env file when present so the log/heredoc report the real port, else fall back to 3000.
+APP_PORT="${APP_PORT:-$(grep -E '^APP_PORT=' "$INSTANCE_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"'\''' )}"
+APP_PORT="${APP_PORT:-3000}"
+run_as() { sudo -u "$SERVICE_USER" -H bash -lc "$*"; }
+
+# --- 1. Rails (install the gem once, then scaffold if not already a Rails app) -----------------
+if ! run_as "cd '$APP_DIR' && '$MISE' exec -- gem list -i '^rails$' >/dev/null 2>&1"; then
+  log "Installing Rails 8"
+  run_as "cd '$APP_DIR' && '$MISE' exec -- gem install rails -v '~> 8.0' --no-document"
+fi
+
+if [[ -f "$APP_DIR/config/application.rb" ]]; then
+  log "Rails app already present at $APP_DIR — skipping scaffold"
+else
+  log "Scaffolding a Rails 8 app at $APP_DIR (SQLite + Solid + Hotwire + PWA defaults)"
+  # --skip-git: bootstrap already inited the repo. Keep Rails 8 defaults otherwise (that IS the
+  # opinionated stack); the agent adds everything else.
+  run_as "cd '$APP_DIR' && '$MISE' exec -- rails new . --skip-git"
+
+  if [[ -z "${SKIP_AUTH:-}" ]]; then
+    log "Generating Rails' built-in authentication (for private access behind your domain)"
+    run_as "cd '$APP_DIR' && '$MISE' exec -- bin/rails generate authentication"
+  fi
+fi
+
+# --- 2. PWA: enable the routes Rails 8 ships (commented by default) + link the manifest ---------
+ROUTES="$APP_DIR/config/routes.rb"
+if [[ -f "$ROUTES" ]]; then
+  run_as "sed -i 's|^[[:space:]]*#[[:space:]]*\(get \"service-worker\".*\)|  \1|; s|^[[:space:]]*#[[:space:]]*\(get \"manifest\".*\)|  \1|' '$ROUTES'"
+  # Reserve /_agent/* for an (opt-in) in-app agent surface so a worker never collides with it.
+  if ! grep -q "_agent" "$ROUTES"; then
+    run_as "awk 'NR==1{print; print \"  # Reserved: /_agent/* is for an optional in-app agent surface — do not route app paths here.\"; next} {print}' '$ROUTES' > '$ROUTES.tmp' && mv '$ROUTES.tmp' '$ROUTES' && chown $SERVICE_USER:$SERVICE_USER '$ROUTES'"
+  fi
+fi
+
+LAYOUT="$APP_DIR/app/views/layouts/application.html.erb"
+if [[ -f "$LAYOUT" ]] && ! grep -q 'rel="manifest"' "$LAYOUT"; then
+  log "Linking the PWA manifest in the app layout"
+  # Matches the route Rails 8 ships (get "manifest" => "rails/pwa#manifest") served at /manifest.
+  run_as "sed -i 's|</head>|    <link rel=\"manifest\" href=\"/manifest\">\n  </head>|' '$LAYOUT'"
+fi
+
+# --- 2b. Allow the published host (reload mode = development, where Rails host-auth blocks all but
+# localhost). Caddy forwards the original Host, so the app must permit the domain it's served on. ---
+DEV_ENV="$APP_DIR/config/environments/development.rb"
+DOMAIN="${LILA_DOMAIN:-$(grep -E '^LILA_DOMAIN=' "$INSTANCE_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"'\''' )}"
+if [[ -n "$DOMAIN" && -f "$DEV_ENV" ]] && ! grep -q "lila published host" "$DEV_ENV"; then
+  log "Allowing published host $DOMAIN in development host-authorization"
+  # If this is an already-checkpointed Rails app, checkpoint this platform-managed host auth line
+  # immediately. During the initial scaffold the app tree is still untracked; the worker's scaffold
+  # commit will include this line with the rest of the generated app.
+  can_checkpoint_host=0
+  if run_as "cd '$APP_DIR' && git ls-files --error-unmatch config/environments/development.rb >/dev/null 2>&1 && git diff --quiet -- config/environments/development.rb"; then
+    can_checkpoint_host=1
+  fi
+  run_as "sed -i 's|^Rails.application.configure do|Rails.application.configure do\n  config.hosts << \"$DOMAIN\" # lila published host|' '$DEV_ENV'"
+  if [[ "$can_checkpoint_host" -eq 1 ]]; then
+    run_as "cd '$APP_DIR' && git add config/environments/development.rb && git commit -m 'Allow published host in development' >/dev/null"
+    log "Committed published-host allowance in the app repo"
+  fi
+fi
+
+# --- 3. Prepare the databases (SQLite + Solid Queue/Cache/Cable) -------------------------------
+log "Preparing databases"
+run_as "cd '$APP_DIR' && RAILS_ENV=development '$MISE' exec -- bin/rails db:prepare"
+
+# --- 4. Install + start the app service (reload mode) ------------------------------------------
+APP_UNIT="lila-app@$INSTANCE"
+# Template unit: host-level constants are substituted once; %i selects the dir (/srv/%i) and the
+# env file (/etc/lila/%i.env, which carries APP_PORT). Safe to re-install (idempotent).
+log "Installing systemd template unit lila-app@.service; starting $APP_UNIT (127.0.0.1:$APP_PORT)"
+sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__MISE__|$MISE|g" \
+  "$REPO_DIR/deploy/lila-app@.service" > /etc/systemd/system/lila-app@.service
+systemctl daemon-reload
+systemctl enable "$APP_UNIT"
+systemctl restart "$APP_UNIT"
+
+cat <<EOF
+
+────────────────────────────────────────────────────────────────────────────
+App is live in reload mode on http://127.0.0.1:$APP_PORT (private to the box).
+  Logs:    journalctl -u $APP_UNIT -f
+  Restart: sudo systemctl restart $APP_UNIT   # only for new gems / initializers / routes
+
+To publish it behind YOUR domain (TLS via Caddy):
+  1. Point your domain's DNS at this host.
+  2. Set LILA_DOMAIN and re-run bootstrap.sh (primary) or bin/new-instance (added apps): each writes
+     this instance's Caddy site block at /etc/caddy/sites/$INSTANCE.caddy and installs Caddy for you.
+  3. Built-in auth is already generated$([[ -n "${SKIP_AUTH:-}" ]] && echo " — SKIPPED (run: bin/rails generate authentication)").
+────────────────────────────────────────────────────────────────────────────
+EOF

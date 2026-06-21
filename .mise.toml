@@ -1,0 +1,5 @@
+# Toolchain pins for the host (mise installs these — one static binary, no daemon).
+# Ruby for the app the agent builds (Rails 8); Node for the manager + Codex CLI.
+[tools]
+ruby = "3.3"
+node = "22"
