@@ -12,3 +12,14 @@
 /eval/fixtures/rails-app/log/
 /eval/fixtures/rails-app/tmp/
 /eval/fixtures/rails-app/storage/*.sqlite3*
+
+# Private dogfooding/operations setup for the live host (instance ids, tokens, deploy scripts,
+# RUNBOOK, parked legacy-ts.env secrets). Local-only — never part of the OSS framework.
+/dogfooding/
+
+# Intermediate planning artifacts from working sessions. Local-only scratch.
+/claude-plans/
+
+# Hero-video staging workspace (Remotion project + node_modules + raw captures). The finished
+# assets live in /docs and are committed; the staging tree is local-only (~510MB).
+/video-assets-staging/

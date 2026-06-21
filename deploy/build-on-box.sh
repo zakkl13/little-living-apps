@@ -3,7 +3,7 @@
 # Idempotent: ensures rustup + build deps + swap, clones/updates the repo, and (re)builds the binary.
 # Pipe through the SSM runner (it has the host facts):
 #
-#   BRANCH=main /Users/zakk/lilapps/lila-rs/deploy/build-on-box.sh | sprite-codex-bot/dogfooding/ssm.sh
+#   BRANCH=main /Users/zakk/lilapps/lila-rs/deploy/build-on-box.sh | lila-rs/dogfooding/ssm.sh
 #
 # Defaults to the `main` branch (post-promotion). Pass BRANCH=rust-rewrite during the transition.
 set -euo pipefail

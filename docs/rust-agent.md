@@ -4,7 +4,7 @@ A Telegram-driven **manager agent** that delegates to ephemeral **workers**, kee
 git-backed **memory**, and rides a **Codex *or* Claude subscription** (never metered API billing).
 One self-contained binary per host instance. This is the Rust reimplementation of the original
 TypeScript agent — same architecture, idiomatic async Rust. (The original TypeScript implementation
-is preserved on the `legacy-typescript` branch.)
+has been retired now that the Rust rewrite is the canonical agent.)
 
 ## Architecture
 
@@ -88,9 +88,10 @@ The fake backend is inert in production — it only activates when `LILA_FAKE_BA
 
 ## Deploy
 
-`deploy/deploy-rs.sh` builds a static musl binary, ships it via S3, and installs the
-`deploy/lila-rs@.service` systemd template unit over SSM — standing the Rust instance up
-side-by-side with the live TS instances for UAT. See the script header for prerequisites.
+`deploy/build-on-box.sh` builds the `lila` release binary natively on the Graviton host over SSM
+(no cross-compile). The manager runs as the `deploy/lila-manager@.service` systemd template unit
+(one instance = one brain = one app), paired with the Rails app under `deploy/lila-app@.service`;
+`bootstrap.sh` / `bin/new-instance` install these per host. See the script + unit headers for details.
 
 ## Principles
 
