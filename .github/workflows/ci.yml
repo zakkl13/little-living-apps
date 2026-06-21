@@ -37,8 +37,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
-      - name: Core coverage gate (≥ 70%)
-        run: scripts/coverage.sh check 70
+      - name: Core coverage gate (≥ 78%)
+        run: scripts/coverage.sh check 78
       - name: Publish badge to `badges` branch
         if: github.ref == 'refs/heads/main'
         run: |

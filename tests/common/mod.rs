@@ -181,3 +181,20 @@ fn send_message(shared: &Shared, body: &[u8]) -> Value {
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
+
+/// Gracefully stop a spawned `lila run` daemon: SIGTERM (so it runs its shutdown path and — under
+/// `cargo llvm-cov` — flushes its coverage `.profraw` on a clean exit), then reap it. Falls back to
+/// SIGKILL if it overstays. `child.kill()` (SIGKILL) terminates abruptly and loses the profile, so
+/// the long-lived daemon's lines (`manager/app.rs`, `commands/run.rs`, the pollers) read as 0%.
+pub async fn terminate(child: &mut tokio::process::Child) {
+    if let Some(pid) = child.id() {
+        // `/bin/kill` sends SIGTERM by default — no `unsafe`/libc, portable across macOS + Linux.
+        let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
+    }
+    if tokio::time::timeout(Duration::from_secs(5), child.wait())
+        .await
+        .is_err()
+    {
+        let _ = child.kill().await;
+    }
+}

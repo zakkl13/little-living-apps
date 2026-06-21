@@ -16,9 +16,13 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HERE"
 
-# Live-only seams + CLI entrypoints — only reachable from the #[ignore]d live_* tests or by hand, so
-# `cargo test` can never cover them. Keep this in lock-step with the README's coverage-scope note.
-IGNORE='(bin/|commands/|main\.rs|logging\.rs|manager/(app|claude|codex|prompt|fake_backend)\.rs|workers/(claude_runner|codex_runner|real|runner)\.rs|transport/(deliver|poller)\.rs|eval/(report|run)\.rs)'
+# Real-subscription seams — the manager/worker backends that shell out to the live `codex`/`claude`
+# CLIs and the `lila eval` harness entrypoint. Only reachable from the #[ignore]d live_* tests or by
+# hand, so `cargo test` can never cover them. Everything else — including the `lila run` daemon
+# (manager/app.rs, commands/run.rs, the pollers/deliver) — IS exercised by the binary-driven
+# integration tests, whose spawned daemon now forwards LLVM_PROFILE_FILE and exits on SIGTERM so its
+# profile is captured. Keep this in lock-step with the README's coverage-scope note.
+IGNORE='(bin/|manager/(claude|codex)\.rs|workers/(claude_runner|codex_runner|real|runner)\.rs|eval/(report|run)\.rs)'
 
 measure() {
   # Two steps so the figure is robust to a flaky test: a non-zero `cargo llvm-cov` (one e2e test

@@ -673,4 +673,100 @@ mod tests {
         mem.reindex().unwrap();
         assert_eq!(mem.search("reindexable", 10).unwrap().len(), 1);
     }
+
+    #[test]
+    fn execute_dispatches_every_command_variant() {
+        let (_t, mem) = open_mem();
+        let p = "/memories/archival/e.md".to_string();
+        mem.execute(&MemoryCommand::Create {
+            path: p.clone(),
+            file_text: "alpha\nbeta".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            mem.execute(&MemoryCommand::View {
+                path: p.clone(),
+                view_range: None,
+            })
+            .unwrap(),
+            "alpha\nbeta"
+        );
+        mem.execute(&MemoryCommand::StrReplace {
+            path: p.clone(),
+            old_str: "alpha".into(),
+            new_str: "gamma".into(),
+        })
+        .unwrap();
+        mem.execute(&MemoryCommand::Insert {
+            path: p.clone(),
+            insert_line: 0,
+            insert_text: "top".into(),
+        })
+        .unwrap();
+        assert!(mem.view(&p, None).unwrap().starts_with("top\ngamma"));
+        mem.execute(&MemoryCommand::Rename {
+            old_path: p.clone(),
+            new_path: "/memories/archival/e2.md".into(),
+        })
+        .unwrap();
+        mem.execute(&MemoryCommand::Delete {
+            path: "/memories/archival/e2.md".into(),
+        })
+        .unwrap();
+        assert!(mem.view("/memories/archival/e2.md", None).is_err());
+    }
+
+    #[test]
+    fn insert_clamps_past_end_and_rejects_missing_file() {
+        let (_t, mem) = open_mem();
+        mem.create("/memories/archival/i.md", "one\ntwo").unwrap();
+        // A line far past the end clamps to append.
+        mem.insert("/memories/archival/i.md", 999, "last").unwrap();
+        assert!(mem.view("/memories/archival/i.md", None).unwrap().ends_with("last"));
+        assert!(mem.insert("/memories/archival/missing.md", 0, "x").is_err());
+    }
+
+    #[test]
+    fn delete_and_rename_reject_bad_targets() {
+        let (_t, mem) = open_mem();
+        assert!(mem.delete("/memories").is_err()); // refuses the root
+        assert!(mem.delete("/memories/archival/nope.md").is_err());
+        assert!(
+            mem.rename("/memories/archival/nope.md", "/memories/archival/x.md")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn write_recall_lands_under_month_and_is_recall_searchable() {
+        let (_t, mem) = open_mem();
+        // Explicit month key: deterministic placement.
+        let msg = mem
+            .write_recall("chat-summary", "owner asked about pluto", Some("2026-06"))
+            .unwrap();
+        assert!(msg.contains("recall/2026-06/chat-summary.md"), "got {msg}");
+        let hits = mem.recall_search("pluto", 10).unwrap();
+        assert!(hits.iter().any(|h| h.path.contains("recall/2026-06/")));
+        // Default month exercises current_month_folder()/civil_from_days().
+        let auto = mem.write_recall("auto", "second note", None).unwrap();
+        assert!(auto.contains("/recall/"));
+    }
+
+    #[test]
+    fn tree_listing_and_list_all_reflect_disk() {
+        let (_t, mem) = open_mem();
+        assert_eq!(mem.tree_listing(), "(no archival/recall files yet)");
+        mem.create(
+            "/memories/archival/desc.md",
+            "---\ndescription: a noted fact\n---\nbody",
+        )
+        .unwrap();
+        let tree = mem.tree_listing();
+        assert!(tree.contains("archival/desc.md"));
+        assert!(tree.contains("a noted fact"));
+        // list_all includes the scaffolded system file plus the new one.
+        let all = mem.list_all();
+        assert!(all.iter().any(|(rel, _)| rel.starts_with("system/")));
+        assert!(all.iter().any(|(rel, _)| rel.ends_with("desc.md")));
+    }
 }

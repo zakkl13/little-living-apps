@@ -24,6 +24,9 @@ fn spawn_run_with_trace(
     Command::new(bin)
         .arg("run")
         .env_clear()
+        // Forward the coverage profile path through env_clear() (see agent_loop.rs); a no-op
+        // under plain `cargo test`.
+        .envs(std::env::var("LLVM_PROFILE_FILE").ok().map(|v| ("LLVM_PROFILE_FILE", v)))
         .env("PATH", path)
         .env("HOME", state_dir)
         .env("TELEGRAM_BOT_TOKEN", "test-token")
@@ -59,7 +62,7 @@ async fn trace_records_timeline_conversation_and_usage() {
     assert!(got, "manager should reply; got {:?}", tg.sent());
     // Give the loop a beat to emit the post-turn idle marker, then stop the binary.
     tokio::time::sleep(Duration::from_millis(300)).await;
-    let _ = child.kill().await;
+    common::terminate(&mut child).await;
 
     let body = std::fs::read_to_string(&trace_path).expect("trace file written");
     let records: Vec<Value> = body

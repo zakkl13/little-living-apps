@@ -22,6 +22,10 @@ fn spawn_run(
     Command::new(bin)
         .arg("run")
         .env_clear()
+        // Forward the coverage profile path through env_clear() so the spawned (instrumented)
+        // daemon writes its own .profraw; absent under plain `cargo test`, so the env stays
+        // hermetic. The %p-%10m pattern keeps each subprocess's profile distinct.
+        .envs(std::env::var("LLVM_PROFILE_FILE").ok().map(|v| ("LLVM_PROFILE_FILE", v)))
         .env("PATH", path)
         .env("HOME", state_dir) // git init is happy with any HOME
         .env("TELEGRAM_BOT_TOKEN", "test-token")
@@ -51,7 +55,7 @@ async fn owner_message_gets_a_reply() {
         "pong",
     );
     let got = tg.wait_for_sent("pong", Duration::from_secs(20)).await;
-    let _ = child.kill().await;
+    common::terminate(&mut child).await;
 
     assert!(
         got,
@@ -81,7 +85,7 @@ async fn unauthorized_user_is_refused() {
     let refused = tg
         .wait_for_sent("not authorized", Duration::from_secs(20))
         .await;
-    let _ = child.kill().await;
+    common::terminate(&mut child).await;
 
     assert!(
         refused,
@@ -109,7 +113,7 @@ async fn status_command_reports_state() {
     let got = tg
         .wait_for_sent("Workers running", Duration::from_secs(20))
         .await;
-    let _ = child.kill().await;
+    common::terminate(&mut child).await;
 
     assert!(got, "/status should report state; got {:?}", tg.sent());
 }
@@ -125,7 +129,7 @@ async fn snapshot_persists_across_restart() {
     tg.push_owner_message(42, 100, "first");
     let mut child = spawn_run(&tg, &state, &memory, "reply-one");
     assert!(tg.wait_for_sent("reply-one", Duration::from_secs(20)).await);
-    let _ = child.kill().await;
+    common::terminate(&mut child).await;
 
     // The snapshot file must exist and carry the captured fake session id.
     let snap = std::fs::read_to_string(state.join("snapshot.json")).expect("snapshot written");
@@ -138,5 +142,5 @@ async fn snapshot_persists_across_restart() {
     tg.push_owner_message(42, 100, "second");
     let mut child2 = spawn_run(&tg, &state, &memory, "reply-two");
     assert!(tg.wait_for_sent("reply-two", Duration::from_secs(20)).await);
-    let _ = child2.kill().await;
+    common::terminate(&mut child2).await;
 }

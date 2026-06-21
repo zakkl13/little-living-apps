@@ -232,4 +232,68 @@ mod tests {
         assert_eq!(default_judge_backend("codex"), "claude");
         assert_eq!(default_judge_backend("claude"), "codex");
     }
+
+    #[test]
+    fn render_owner_exchange_keeps_only_owner_visible_lines() {
+        use crate::eval::transcript::TimelineEntry;
+        let timeline = vec![
+            TimelineEntry::OwnerMsg {
+                seq: 1,
+                text: "ship it".into(),
+            },
+            TimelineEntry::WorkerCall {
+                seq: 2,
+                call_id: 1,
+                prompt: "internal".into(), // not owner-visible → filtered out
+            },
+            TimelineEntry::Delivery {
+                seq: 3,
+                text: "done".into(),
+            },
+        ];
+        let out = render_owner_exchange(&timeline);
+        assert_eq!(out, "OWNER: ship it\nMANAGER→OWNER: done");
+        assert!(!out.contains("internal"));
+        assert_eq!(render_owner_exchange(&[]), "(nothing delivered)");
+    }
+
+    #[test]
+    fn render_worker_prompts_formats_and_falls_back() {
+        use crate::eval::transcript::WorkerPrompt;
+        let prompts = vec![WorkerPrompt {
+            turn_id: 4,
+            kind: "subagent_start".into(),
+            prompt: "fix the bug".into(),
+        }];
+        assert_eq!(
+            render_worker_prompts(&prompts),
+            "[turn 4] subagent_start → fix the bug"
+        );
+        assert_eq!(render_worker_prompts(&[]), "(none)");
+    }
+
+    #[test]
+    fn render_blocks_labels_every_trace_variant() {
+        use crate::runtime::TraceBlock;
+        let blocks = vec![
+            TraceBlock::Text { text: "hi".into() },
+            TraceBlock::Thinking,
+            TraceBlock::ToolUse { name: "memory".into() },
+            TraceBlock::ToolResult {
+                content: "ok".into(),
+            },
+        ];
+        assert_eq!(
+            render_blocks(&blocks),
+            "text: hi | (private reasoning) | tool_use: memory | tool_result: ok"
+        );
+    }
+
+    #[test]
+    fn non_empty_and_clip_edges() {
+        assert_eq!(non_empty("  ".into(), "fallback"), "fallback");
+        assert_eq!(non_empty("kept".into(), "fallback"), "kept");
+        assert_eq!(clip("short", 100), "short");
+        assert_eq!(clip("abcdef", 3), "abc\n…(clipped)");
+    }
 }

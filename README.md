@@ -9,10 +9,8 @@ Text it into being. Text it as it grows.
 <a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot 'build me a reading log'; an agent team scaffolds a working app, then ships a requested feature — tags, filters, and a chart — into the same app." width="100%"></a>
 
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
-[![eval](https://img.shields.io/badge/eval%20%28smoke%29-1.00%20codex%20%C2%B7%200.95%20claude-brightgreen)](#evals)
+[![eval](https://img.shields.io/badge/eval-1.00%20codex%20%C2%B7%200.95%20claude-brightgreen)](#evals)
 [![license](https://img.shields.io/badge/license-MIT-blue)](#license)
-[![no API key](https://img.shields.io/badge/billing-your%20subscription-8a2be2)](#tech-involved)
-[![runs behind NAT](https://img.shields.io/badge/network-no%20open%20ports-555)](#how-it-works)
 
 </div>
 
@@ -278,10 +276,12 @@ We verify in two layers, because agents have a deterministic half and a judgment
   MCP tools, orchestrator, durability) runs against fakes while git + sqlite memory run for real. The
   headline e2e spawns `lila run` against a fake Telegram server + fake agent CLIs and drives a full
   owner-message → workers → memory-write → reply cascade, then proves a `SIGTERM` cold restart loses
-  nothing. Coverage on this **logic core sits at ~73%** (queue 94%, snapshot 95%, telemetry 93%,
-  orchestrator 88%, memory FTS 91%) — the badge excludes the live-only seams, which by design only
-  run against a real subscription (the network runners, the `#[ignore]`d `live_*` tests) and the CLI
-  entrypoints.
+  nothing. Coverage on this **logic core sits at ~80%** (queue 94%, snapshot 95%, telemetry 93%,
+  orchestrator 88%, memory FTS 91%) — and because the binary-driven tests run the spawned daemon
+  under coverage, the `lila run` loop itself (manager app, command dispatch, the pollers) counts too.
+  The badge excludes only the real-subscription seams, which by design run against a real account: the
+  `codex`/`claude` manager + worker backends and the `lila eval` harness (the `#[ignore]`d `live_*`
+  tests).
 
 - **`lila-eval`** measures what tests can't: how the **real** manager and **real** workers
   behave. A trial boots the full production system — real model, real workers, real shell in a real
