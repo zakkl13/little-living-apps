@@ -8,7 +8,8 @@ Text it into being. Text it as it grows.
 
 <a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot 'build me a reading log'; an agent team scaffolds a working app, then ships a requested feature — tags, filters, and a chart — into the same app." width="100%"></a>
 
-[![tests](https://img.shields.io/badge/tests-passing-brightgreen)](#evals)
+[![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
+[![eval](https://img.shields.io/badge/eval%20%28smoke%29-1.00%20codex%20%C2%B7%200.95%20claude-brightgreen)](#evals)
 [![license](https://img.shields.io/badge/license-MIT-blue)](#license)
 [![no API key](https://img.shields.io/badge/billing-your%20subscription-8a2be2)](#tech-involved)
 [![runs behind NAT](https://img.shields.io/badge/network-no%20open%20ports-555)](#how-it-works)
@@ -71,15 +72,17 @@ Fresh Ubuntu 22.04+/Debian 12 host. No API key required.
 
 ### Let an agent set it up for you
 
-The fastest path is to hand the whole setup to Claude Code or Codex. Install the `setup-living-app`
-skill and your agent drives it end to end — VPS sizing, SSH, the Telegram bot, `.env`, bootstrap, the
-one-time subscription login, and an optional domain with HTTPS:
+The fastest path is to hand the whole setup to Claude Code or Codex. Point it at this repo and ask:
 
-```bash
-npx skills add zakkl13/little-living-apps -a claude-code -a codex -g
-```
+> **go check out the GitHub repo zakkl13/little-living-apps and set up an instance for me**
 
-Then run `/setup-living-app` (Claude Code) or `$setup-living-app` (Codex) and answer the prompts.
+The agent drives the rest end to end — VPS sizing, SSH, the Telegram bot, `.env`, bootstrap, the
+one-time subscription login, and an optional domain with HTTPS — pausing only for the handful of
+secrets it can't invent.
+
+> **Doing this more than once?** For repeatable setups and adding new instances, install the
+> `setup-living-app` skill once — `npx skills add zakkl13/little-living-apps -a claude-code -a codex -g`
+> — then run `/setup-living-app` (Claude Code) or `$setup-living-app` (Codex).
 
 ### Or do it by hand
 
@@ -198,7 +201,7 @@ around — on the roadmap (see `ROADMAP.md`), two outer loops feed it:
 Every piece here was chosen for a reason, and each choice bought something and cost something. The
 honest ledger:
 
-### Claude or Codex — the agent backend
+### Codex or Claude — the agent backend
 
 The manager brain and the workers both run on a subscription-billed backend, selected by
 `AGENT_BACKEND` (default `codex`). Both ride a subscription, never metered API billing, behind the
@@ -213,10 +216,15 @@ same internal seams.
 
 *Why:* these are the two frontier coding agents that can be driven off a flat-rate consumer
 subscription instead of metered API billing — so the running cost is a plan you already pay for, not a
-meter that ticks while agents work. Keeping both behind one seam means you can **swap on a live
-instance** with `/backend claude` (or `/backend codex`): it persists the choice and restarts clean,
-losing no memory. *Cost:* a ToS caveat on the Claude backend (below), and you watch concurrency if you
-run many instances on one account.
+meter that ticks while agents work. **We recommend Codex (the default).** A living app is
+token-hungry — workers routinely burn six- and seven-figure token counts scaffolding and iterating on
+a real app (our `delegate-and-report` eval ran ~420k tokens on Codex doing a Rails scaffold, vs ~8k
+on Claude) — and a ChatGPT subscription affords far more token headroom than a Claude plan, so Codex
+is the backend least likely to hit a ceiling mid-build. Claude is the leaner, far cheaper-per-task
+option and adapts sharply, but its lower headroom bites first when the workers get busy. Keeping both
+behind one seam means you can **swap on a live instance** with `/backend claude` (or `/backend
+codex`): it persists the choice and restarts clean, losing no memory. *Cost:* a ToS caveat on the
+Claude backend (below), and you watch concurrency if you run many instances on one account.
 
 > **Subscription-terms note.** Anthropic's docs say third-party developers may not *offer* claude.ai
 > login or rate limits in products built on the Agent SDK without prior approval. This project is
@@ -270,14 +278,20 @@ We verify in two layers, because agents have a deterministic half and a judgment
   MCP tools, orchestrator, durability) runs against fakes while git + sqlite memory run for real. The
   headline e2e spawns `lila run` against a fake Telegram server + fake agent CLIs and drives a full
   owner-message → workers → memory-write → reply cascade, then proves a `SIGTERM` cold restart loses
-  nothing.
+  nothing. Coverage on this **logic core sits at ~73%** (queue 94%, snapshot 95%, telemetry 93%,
+  orchestrator 88%, memory FTS 91%) — the badge excludes the live-only seams, which by design only
+  run against a real subscription (the network runners, the `#[ignore]`d `live_*` tests) and the CLI
+  entrypoints.
 
 - **`lila-eval`** measures what tests can't: how the **real** manager and **real** workers
   behave. A trial boots the full production system — real model, real workers, real shell in a real
   workspace — with the single substitution that Telegram deliveries are captured for grading instead
   of sent. It grades **outcomes and order, never tool paths**: did the work actually run, did the
   agent validate before claiming done, did it stay quiet on noise, did it remember. Agents that find
-  a smarter route still pass.
+  a smarter route still pass. On the current smoke set (`delegate-and-report`, `remember-fact`,
+  `recall-fact`), **Codex scores a mean 1.00 (3/3) and Claude 0.95** — Claude shaves points only on
+  the no-shop-talk discipline check, not on the work itself. These are single-trial smoke numbers; the
+  honest signal is pass^k over more trials, so treat them as a pulse, not a leaderboard.
 
 ```bash
 cargo test                                      # deterministic suite (compiled binary, faked boundaries)

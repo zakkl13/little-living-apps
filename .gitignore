@@ -1,5 +1,9 @@
 /target
 
+# llvm-cov coverage artifacts (scripts/coverage.sh) — profile data + generated badge JSON
+*.profraw
+/coverage.json
+
 # Eval run artifacts (per-trial transcripts + reports)
 /eval/results/
 # The Rails fixture's vendored gems are built locally by eval/fixtures/setup-rails.sh (78MB), not committed
