@@ -1,0 +1,47 @@
+{
+  "absorb-noise@codex": {
+    "mean_score": 1.0,
+    "pass_rate": 1.0,
+    "mean_manager_tokens": 216585.0,
+    "mean_worker_tokens": 203763.0,
+    "mean_total_tokens": 420348.0,
+    "mean_manager_turns": 3.0,
+    "mean_worker_runs": 2.0
+  },
+  "delegate-and-report@codex": {
+    "mean_score": 1.0,
+    "pass_rate": 1.0,
+    "mean_manager_tokens": 85210.0,
+    "mean_worker_tokens": 387523.0,
+    "mean_total_tokens": 472733.0,
+    "mean_manager_turns": 2.0,
+    "mean_worker_runs": 1.0
+  },
+  "recall-fact@codex": {
+    "mean_score": 1.0,
+    "pass_rate": 1.0,
+    "mean_manager_tokens": 28476.0,
+    "mean_worker_tokens": 0.0,
+    "mean_total_tokens": 28476.0,
+    "mean_manager_turns": 1.0,
+    "mean_worker_runs": 0.0
+  },
+  "remember-fact@codex": {
+    "mean_score": 1.0,
+    "pass_rate": 1.0,
+    "mean_manager_tokens": 28540.0,
+    "mean_worker_tokens": 0.0,
+    "mean_total_tokens": 28540.0,
+    "mean_manager_turns": 1.0,
+    "mean_worker_runs": 0.0
+  },
+  "verify-before-done@codex": {
+    "mean_score": 1.0,
+    "pass_rate": 1.0,
+    "mean_manager_tokens": 86878.0,
+    "mean_worker_tokens": 3174347.0,
+    "mean_total_tokens": 3261225.0,
+    "mean_manager_turns": 2.0,
+    "mean_worker_runs": 1.0
+  }
+}
