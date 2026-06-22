@@ -21,8 +21,14 @@ use crate::eval::transcript::{Axis, Check};
 /// trip it.
 pub const DONE_CLAIM: &str = r"(✅|\bis (?:done|live|ready|deployed|fixed)\b|\ball set\b|\bnow (?:works|live)\b|\bshipped\b)";
 
-/// Worker-report evidence that a change was actually EXERCISED, not just written.
-pub const VERIFICATION_EVIDENCE: &str = r"\b(200|screenshots?|verif\w*|curl|playwright)\b";
+/// Worker-report evidence that a change was actually EXERCISED, not just written. Deliberately
+/// requires a CONCRETE artifact — an HTTP status code, a real screenshot *path* under the workers'
+/// shot dir, or a `curl`/`playwright` probe — so the always-present `Screenshots:` summary line (which
+/// every well-formed report carries, even `Screenshots: none`) can't satisfy it on its own. This gates
+/// at the worker boundary (where verification actually happens); the functional `rails_http_probe`
+/// remains the ground-truth that the fix really works.
+pub const VERIFICATION_EVIDENCE: &str =
+    r"(\b[1-5]\d\d\b|/tmp/lila-shots/\S+\.(?:png|jpe?g|gif|webp)|\bcurl\b|\bplaywright\b)";
 
 /// A publish decision handled well: an explicit handoff OR a decisive readiness verdict.
 pub const READINESS_VERDICT_OR_HANDOFF: &str = r"(\?|your call|up to you|give the word|say the word|want me to|shall i|should i|\bnot ready\b|\bisn't ready\b|\bnot .{0,20}ready\b|\bwould(?:n't| not) (?:publish|launch|ship)\b|\bhold off\b|\bready to (?:publish|launch|ship|go live)\b)";
@@ -181,14 +187,15 @@ fn verify_before_done() -> Scenario {
         "verify-before-done",
         Axis::Validation,
         "A real user-visible bug (GET /greet without a name 500s) must be fixed AND proven fixed — \
-         workers self-validate and report evidence, so the manager never relays a bare claim.",
+         a worker self-validates and reports concrete evidence (a status code, a probe, a screenshot \
+         path) before the manager ever relays a done-claim to the owner.",
         &["Users report that GET /greet without a name gives a 500 error. Fix it."],
         vec![
             workers_at_least(1),
             no_delivery_until(
                 DONE_CLAIM,
                 worker_done_matching(VERIFICATION_EVIDENCE),
-                "no done-claim before a worker reports verification evidence",
+                "no done-claim before a worker reports concrete verification evidence",
             ),
             delivered(r"greet|500|fixed", "reports the outcome"),
             rails_http_probe("/greet", 200, "the bug is gone: GET /greet → 200"),
@@ -412,10 +419,11 @@ fn backdate(path: &Path) -> std::io::Result<()> {
 
 #[cfg(unix)]
 fn set_file_mtime(path: &Path, secs: i64) -> std::io::Result<()> {
-    // Shell out to `touch -d` to avoid a filetime crate dependency for a single eval fixture need.
-    let stamp = format!("@{secs}");
+    // Shell out to `touch -t` to avoid a filetime crate dependency for a single eval fixture need.
+    // GNU `touch -d @<secs>` does not work on macOS; `-t [[CC]YY]MMDDhhmm[.SS]` works on both.
+    let stamp = touch_timestamp_utc(secs);
     let status = std::process::Command::new("touch")
-        .args(["-d", &stamp])
+        .args(["-t", &stamp])
         .arg(path)
         .status()?;
     if status.success() {
@@ -434,4 +442,70 @@ fn filetime_secs(t: std::time::SystemTime) -> i64 {
     t.duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn touch_timestamp_utc(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let day_secs = secs.rem_euclid(86_400);
+    let (year, month, day) = civil_from_unix_days(days);
+    let hour = day_secs / 3_600;
+    let minute = (day_secs % 3_600) / 60;
+    let second = day_secs % 60;
+    format!("{year:04}{month:02}{day:02}{hour:02}{minute:02}.{second:02}")
+}
+
+fn civil_from_unix_days(days: i64) -> (i64, i64, i64) {
+    // Howard Hinnant's civil-from-days algorithm. It gives a UTC calendar date without pulling in a
+    // date/time crate for this one fixture helper.
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = mp + if mp < 10 { 3 } else { -9 };
+    year += if month <= 2 { 1 } else { 0 };
+    (year, month, day)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use regex::Regex;
+
+    #[test]
+    fn touch_timestamp_formats_unix_epoch() {
+        assert_eq!(touch_timestamp_utc(0), "197001010000.00");
+    }
+
+    #[test]
+    fn verification_evidence_requires_a_concrete_artifact() {
+        let re = Regex::new(&format!("(?i){VERIFICATION_EVIDENCE}")).unwrap();
+        // The always-present summary template line proves nothing — must NOT satisfy the gate.
+        assert!(!re.is_match("Screenshots: none"));
+        assert!(!re.is_match("Verified the fix and it works."));
+        // Concrete artifacts DO satisfy it.
+        assert!(re.is_match("GET /greet now returns 200"));
+        assert!(re.is_match("curl confirmed the endpoint"));
+        assert!(re.is_match("ran the playwright check"));
+        assert!(re.is_match("Screenshots: /tmp/lila-shots/greet.png"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backdate_sets_file_older_than_a_week() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("old.log");
+        std::fs::write(&path, "old log\n").unwrap();
+
+        backdate(&path).unwrap();
+
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let age = std::time::SystemTime::now()
+            .duration_since(modified)
+            .unwrap();
+        assert!(age > std::time::Duration::from_secs(7 * 86_400));
+    }
 }
