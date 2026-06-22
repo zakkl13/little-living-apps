@@ -1,6 +1,6 @@
 //! Wire the real manager backend: seed the standing-rules files (worker rules as BOTH `AGENTS.md`
 //! for Codex and `CLAUDE.md` for Claude Code), start the Lila MCP server, and build the
-//! Codex/Claude backend pointed at it. Port of the assembly in `src/manager/backend.ts`.
+//! Codex/Claude backend pointed at it.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};

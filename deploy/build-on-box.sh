@@ -5,7 +5,7 @@
 #
 #   BRANCH=main /Users/zakk/lilapps/lila-rs/deploy/build-on-box.sh | lila-rs/dogfooding/ssm.sh
 #
-# Defaults to the `main` branch (post-promotion). Pass BRANCH=rust-rewrite during the transition.
+# Defaults to the `main` branch.
 set -euo pipefail
 BRANCH="${BRANCH:-main}"
 REPO_URL="${REPO_URL:-https://github.com/zakkl13/little-living-apps.git}"

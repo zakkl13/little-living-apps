@@ -1,4 +1,4 @@
-//! The Claude manager backend. Port of `src/manager/managerClaude.ts` onto `claude-agent-sdk-rust`.
+//! The Claude manager backend, on `claude-agent-sdk-rust`.
 //! Capability boundary — the manager's "no hands": built-in tools off, only the Lila MCP server's
 //! tools allowed (http + bearer). `setting_sources: []` isolates it from host settings. Auth rides
 //! the cached Claude Pro/Max subscription (no ANTHROPIC_API_KEY — stripped from the env).
@@ -222,6 +222,12 @@ fn collect_result(
     }
 }
 
+/// Parse Claude's `usage` JSON into [`TokenUsage`], normalizing the token basis to match Codex.
+///
+/// Anthropic reports `input_tokens` as FRESH (uncached) input only, with cache reads/creation in
+/// separate buckets; Codex/OpenAI report `input_tokens` as the GROSS prompt total (cache included).
+/// We fold cache back into `input_tokens` so both backends measure gross context processed and the
+/// telemetry invariant "cached ⊆ input" holds for Claude as it does for Codex.
 fn parse_usage(usage: &serde_json::Value) -> TokenUsage {
     let get = |k: &str| {
         usage
@@ -229,10 +235,34 @@ fn parse_usage(usage: &serde_json::Value) -> TokenUsage {
             .and_then(serde_json::Value::as_u64)
             .unwrap_or(0)
     };
+    let cache_read = get("cache_read_input_tokens");
     TokenUsage {
-        input_tokens: get("input_tokens"),
+        input_tokens: get("input_tokens") + cache_read + get("cache_creation_input_tokens"),
         output_tokens: get("output_tokens"),
-        cached_input_tokens: get("cache_read_input_tokens"),
+        cached_input_tokens: cache_read,
         reasoning_tokens: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_usage_folds_cache_into_input() {
+        let usage = json!({
+            "input_tokens": 1_500,
+            "cache_read_input_tokens": 90_000,
+            "cache_creation_input_tokens": 8_500,
+            "output_tokens": 4_000,
+        });
+        let got = parse_usage(&usage);
+        assert_eq!(
+            got.input_tokens, 100_000,
+            "fresh + cache_read + cache_creation"
+        );
+        assert_eq!(got.cached_input_tokens, 90_000);
+        assert_eq!(got.output_tokens, 4_000);
     }
 }

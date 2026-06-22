@@ -1,4 +1,4 @@
-//! One manager turn over a long-lived backend thread. Port of `src/manager/driver.ts`.
+//! One manager turn over a long-lived backend thread.
 //!
 //! Prepend the volatile context header → run the turn → the final agent message is the manager's
 //! reply (honoring the `NO_REPLY` sentinel and `ATTACH:` lines); tool calls/reasoning are internal.

@@ -1,5 +1,5 @@
 //! The Lila MCP server: a loopback streamable-HTTP MCP server exposing the manager's memory +
-//! orchestration tools. Port of `src/manager/mcp/server.ts` + `tools.ts` onto `rmcp`. The manager
+//! orchestration tools, on `rmcp`. The manager
 //! thread reaches it via `mcp_servers.lila.url` + a per-boot bearer token. There is deliberately no
 //! shell/file/net tool — the manager's "no hands" boundary is exactly this tool list.
 

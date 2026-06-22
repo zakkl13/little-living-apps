@@ -1,4 +1,4 @@
-//! The Codex worker runner. Port of `src/workers/runner.ts`. Workers are purely ephemeral: every
+//! The Codex worker runner. Workers are purely ephemeral: every
 //! run is a FRESH Codex thread that runs one objective and is never resumed. Unlike the manager,
 //! workers get the FULL toolset (shell/files/net) — the disposable VM is the isolation boundary —
 //! and read their standing rules from the workspace `AGENTS.md`.

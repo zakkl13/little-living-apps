@@ -1,5 +1,4 @@
-//! Crash-recovery snapshots. Port of `src/runtime/snapshot.ts` with a FRESH schema (v1 — no
-//! backwards compatibility with the TS `version: 4` files).
+//! Crash-recovery snapshots (schema v1).
 //!
 //! Written after each turn (cheap, small) so a crash/restart mid-conversation loses nothing. Memory
 //! (`MEMORY_DIR`) is the *semantic* truth; this is the *mechanical* state. The backend owns the
@@ -18,7 +17,7 @@ use crate::config::AgentBackend;
 /// The persisted runtime state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ManagerSnapshot {
-    /// Schema version (fresh line; not compatible with the TS snapshots).
+    /// Schema version.
     pub version: u32,
     /// The manager session to resume on cold start; absent before the first turn / after `/new`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

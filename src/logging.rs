@@ -1,4 +1,4 @@
-//! Tracing setup. Port of `sprite-codex-bot/src/logger.ts`: structured logs honoring `LOG_LEVEL`
+//! Tracing setup: structured logs honoring `LOG_LEVEL`
 //! (default `info`). The Inspector subscribes to the same `tracing` stream.
 
 use std::sync::Once;

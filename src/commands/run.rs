@@ -1,4 +1,4 @@
-//! `lila run` — the long-lived manager daemon. Port of `src/index.ts`.
+//! `lila run` — the long-lived manager daemon.
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -155,7 +155,7 @@ fn fake_backend() -> Option<Box<dyn ManagerBackend>> {
 }
 
 /// Load config, applying any persisted `/backend` override via the env map (no `set_var`, so the
-/// `forbid(unsafe_code)` rule holds). Port of the boot-time override read in `src/index.ts`.
+/// `forbid(unsafe_code)` rule holds).
 fn load_config_with_override() -> Result<Config, crate::config::ConfigError> {
     let mut env = crate::config::process_env();
     let state_dir = env

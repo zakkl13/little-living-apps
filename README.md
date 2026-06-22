@@ -8,6 +8,7 @@ Text it into being. Text it as it grows.
 
 <a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot 'build me a reading log'; an agent team scaffolds a working app, then ships a requested feature — tags, filters, and a chart — into the same app." width="100%"></a>
 
+[![ci](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
 [![eval](https://img.shields.io/badge/eval-1.00%20codex%20%C2%B7%200.95%20claude-brightgreen)](#evals)
 [![license](https://img.shields.io/badge/license-MIT-blue)](#license)
@@ -216,10 +217,13 @@ same internal seams.
 subscription instead of metered API billing — so the running cost is a plan you already pay for, not a
 meter that ticks while agents work. **We recommend Codex (the default).** A living app is
 token-hungry — workers routinely burn six- and seven-figure token counts scaffolding and iterating on
-a real app (our `delegate-and-report` eval ran ~420k tokens on Codex doing a Rails scaffold, vs ~8k
-on Claude) — and a ChatGPT subscription affords far more token headroom than a Claude plan, so Codex
-is the backend least likely to hit a ceiling mid-build. Claude is the leaner, far cheaper-per-task
-option and adapts sharply, but its lower headroom bites first when the workers get busy. Keeping both
+a real app, on *either* backend — and a ChatGPT subscription comes with a far more generous token
+allocation than a Claude plan, so Codex is the backend least likely to hit a ceiling mid-build. (The
+two backends consume comparable tokens per task: both now report **gross** input — fresh plus cache
+reads/creation — so the eval's per-task counts line up. An earlier ~50× Codex-vs-Claude gap was a
+measurement artifact of counting cache reads for Codex but not Claude, since fixed.) Claude adapts
+sharply and is a great choice, but its plan's lower token allocation bites first when the workers get
+busy. Keeping both
 behind one seam means you can **swap on a live instance** with `/backend claude` (or `/backend
 codex`): it persists the choice and restarts clean, losing no memory. *Cost:* a ToS caveat on the
 Claude backend (below), and you watch concurrency if you run many instances on one account.
@@ -298,6 +302,22 @@ cargo test                                      # deterministic suite (compiled 
 cargo clippy --all-targets -- -D warnings       # lints (CI denies warnings)
 cargo run --release --bin lila-eval -- --smoke  # cheapest live pulse against the real model
 ```
+
+For a full live baseline, bank results first and bless them after the token-spending runs are done.
+Every completed trial is written immediately, and repeated runs can share one `--out-dir` without
+clobbering each other:
+
+```bash
+RUN=eval/results/baseline-codex
+cargo run --release --bin lila-eval -- --axis delegation --out-dir "$RUN"
+cargo run --release --bin lila-eval -- --axis validation --out-dir "$RUN"
+cargo run --release --bin lila-eval -- --axis memory --out-dir "$RUN"
+cargo run --release --bin lila-eval -- --from-results "$RUN" --update-baseline
+```
+
+Use `--filter`, `--axis`, or `--smoke` for whatever chunks fit under the current usage limit. The
+`--from-results` pass re-aggregates saved per-trial JSON without spending model tokens, so it also
+works if an earlier run was interrupted before writing its aggregate report.
 
 ## Status
 

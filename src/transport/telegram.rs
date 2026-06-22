@@ -1,4 +1,4 @@
-//! Minimal reqwest-based Telegram Bot API client. Port of `src/transport/telegram.ts`. Deliberately
+//! Minimal reqwest-based Telegram Bot API client. Deliberately
 //! tiny so the base URL can be pointed at a fake server in tests. Handles the one hard requirement:
 //! responses > 4096 chars are chunked, never truncated.
 

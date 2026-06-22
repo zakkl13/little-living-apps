@@ -1,4 +1,4 @@
-//! The Codex manager backend. Port of `src/manager/managerCodex.ts` onto `codex-client-sdk`.
+//! The Codex manager backend, on `codex-client-sdk`.
 //! Capability boundary — the manager's "no hands": shell off, web off, read-only sandbox, network
 //! off. Its ONLY tools are the Lila MCP server's. Auth rides the cached ChatGPT-subscription login;
 //! billing-flip keys are stripped from the CLI env.

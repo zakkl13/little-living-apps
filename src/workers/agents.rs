@@ -1,4 +1,4 @@
-//! The single source of truth for a worker's standing instructions. Port of `src/workers/agents.ts`.
+//! The single source of truth for a worker's standing instructions.
 //! Deployed verbatim as the workspace `AGENTS.md`, which the worker's CLI reads natively each
 //! session. The summary-block marker here is kept identical to [`super::protocol`]'s via a test.
 //!

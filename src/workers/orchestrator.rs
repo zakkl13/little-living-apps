@@ -1,4 +1,4 @@
-//! The async worker tier, purely ephemeral. Port of `src/workers/orchestrator.ts`. `start()`
+//! The async worker tier, purely ephemeral. `start()`
 //! launches a single-shot run in the background and returns immediately; when it settles, ONE
 //! worker_event is sent onto the manager queue and the worker is gone. No registry, no resume.
 

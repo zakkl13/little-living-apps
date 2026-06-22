@@ -1,6 +1,5 @@
 //! The backend seam: a backend-agnostic interface the [`super::driver::ManagerDriver`] drives, so
-//! the loop is backend-blind and a `FakeBackend` can run the whole system in tests. Port of the
-//! `ManagerThread` / `ManagerThreadFactory` seam in `src/manager/managerCodex.ts`.
+//! the loop is backend-blind and a `FakeBackend` can run the whole system in tests.
 
 use async_trait::async_trait;
 use thiserror::Error;

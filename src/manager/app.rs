@@ -1,5 +1,4 @@
-//! The manager runtime composition root + the serialized loop. Port of `src/app.ts` + the
-//! consumer half of `src/runtime/loop.ts`.
+//! The manager runtime composition root + the serialized loop.
 //!
 //! Design (idiomatic, no global state): ONE task owns all mutable manager state — the queue, the
 //! turn driver, the snapshot store, the Telegram client. Producers (the poller, the worker

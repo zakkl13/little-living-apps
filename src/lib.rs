@@ -1,8 +1,7 @@
-//! little-living-apps agent — Rust implementation.
+//! little-living-apps agent.
 //!
 //! A Telegram-driven manager agent that delegates to ephemeral workers, keeps durable git-backed
-//! memory, and rides a Codex *or* Claude subscription (never metered API billing). See
-//! `~/.claude/plans/nifty-inventing-lecun.md` for the design and the TS reference it ports.
+//! memory, and rides a Codex *or* Claude subscription (never metered API billing).
 #![forbid(unsafe_code)]
 #![warn(clippy::all)]
 #![cfg_attr(not(test), warn(clippy::unwrap_used, clippy::expect_used))]

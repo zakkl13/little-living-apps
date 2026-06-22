@@ -1,4 +1,4 @@
-//! The Claude worker runner. Port of `src/workers/runnerClaude.ts`. Single-shot `query()` with the
+//! The Claude worker runner. Single-shot `query()` with the
 //! full default toolset (workers DO real work — the disposable VM is the isolation boundary) and
 //! `bypassPermissions` so the worker can act autonomously. Standing rules come from the workspace
 //! `AGENTS.md`.
@@ -93,13 +93,24 @@ impl Default for WorkerRun {
 
 /// Parse Claude's loosely-typed `usage` JSON blob (input/output/cache fields) into [`TokenUsage`].
 /// Claude reports no separate reasoning split, so that stays zero.
+///
+/// Basis normalization: Anthropic reports `input_tokens` as FRESH (uncached) input only, with cache
+/// reads/creation in separate buckets. Codex/OpenAI report `input_tokens` as the GROSS prompt total
+/// (cache included, with `cached_input_tokens` a subset within it). We fold cache back into
+/// `input_tokens` here so both backends' `input_tokens` mean the same thing — gross context
+/// processed — and the telemetry invariant "cached ⊆ input" holds for Claude as it does for Codex.
 fn parse_claude_usage(usage: Option<&serde_json::Value>) -> TokenUsage {
     let field = |u: &serde_json::Value, k: &str| u.get(k).and_then(serde_json::Value::as_u64);
-    usage.map_or_else(TokenUsage::default, |u| TokenUsage {
-        input_tokens: field(u, "input_tokens").unwrap_or(0),
-        output_tokens: field(u, "output_tokens").unwrap_or(0),
-        cached_input_tokens: field(u, "cache_read_input_tokens").unwrap_or(0),
-        reasoning_tokens: 0,
+    usage.map_or_else(TokenUsage::default, |u| {
+        let fresh_input = field(u, "input_tokens").unwrap_or(0);
+        let cache_read = field(u, "cache_read_input_tokens").unwrap_or(0);
+        let cache_creation = field(u, "cache_creation_input_tokens").unwrap_or(0);
+        TokenUsage {
+            input_tokens: fresh_input + cache_read + cache_creation,
+            output_tokens: field(u, "output_tokens").unwrap_or(0),
+            cached_input_tokens: cache_read,
+            reasoning_tokens: 0,
+        }
     })
 }
 
@@ -133,5 +144,43 @@ impl WorkerRun {
         {
             self.text = result;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn folds_cache_into_input_for_codex_parity() {
+        // Anthropic splits cache out of input_tokens; we fold it back so input_tokens is the gross
+        // context processed (matching Codex), keeping cached a subset of input.
+        let usage = json!({
+            "input_tokens": 2_000,
+            "cache_read_input_tokens": 400_000,
+            "cache_creation_input_tokens": 18_000,
+            "output_tokens": 6_000,
+        });
+        let got = parse_claude_usage(Some(&usage));
+        assert_eq!(
+            got.input_tokens, 420_000,
+            "fresh + cache_read + cache_creation"
+        );
+        assert_eq!(
+            got.cached_input_tokens, 400_000,
+            "cached is the read subset only"
+        );
+        assert_eq!(got.output_tokens, 6_000);
+        // Billable total now reflects gross context, comparable to a Codex worker on the same task.
+        assert_eq!(got.total(), 426_000);
+    }
+
+    #[test]
+    fn missing_cache_fields_default_to_zero() {
+        let usage = json!({ "input_tokens": 100, "output_tokens": 20 });
+        let got = parse_claude_usage(Some(&usage));
+        assert_eq!(got.input_tokens, 100);
+        assert_eq!(got.cached_input_tokens, 0);
     }
 }

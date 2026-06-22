@@ -1,5 +1,5 @@
-//! The Inspector — a read-only HTTP plane over the manager's live state. Port of
-//! `src/inspector/server.ts`. Bound to 127.0.0.1 and fronted by Caddy at `/_inspect` (a
+//! The Inspector — a read-only HTTP plane over the manager's live state. Bound to 127.0.0.1 and
+//! fronted by Caddy at `/_inspect` (a
 //! `handle_path` strips the prefix, so this server sees plain `/`, `/api/*`). It is deliberately NOT
 //! a model tool (the manager's "no hands" boundary stays airtight); it only observes.
 //!

@@ -1,4 +1,4 @@
-//! Telegram long-poll transport. Port of `src/transport/poller.ts`. The box makes OUTBOUND
+//! Telegram long-poll transport. The box makes OUTBOUND
 //! getUpdates calls and never listens on a port. One loop pulls updates, forwards each over a
 //! channel (the app authorizes + enqueues), and advances the confirmation offset past it.
 

@@ -14,7 +14,7 @@
 /eval/fixtures/rails-app/storage/*.sqlite3*
 
 # Private dogfooding/operations setup for the live host (instance ids, tokens, deploy scripts,
-# RUNBOOK, parked legacy-ts.env secrets). Local-only — never part of the OSS framework.
+# RUNBOOK, parked env secrets). Local-only — never part of the OSS framework.
 /dogfooding/
 
 # Intermediate planning artifacts from working sessions. Local-only scratch.

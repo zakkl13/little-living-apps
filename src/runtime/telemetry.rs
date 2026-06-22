@@ -1,5 +1,5 @@
-//! Passive observability recorder (read by the Inspector / `lila status`). Port of
-//! `src/runtime/telemetry.ts`. Records TOKEN USAGE only — everything rides one subscription, so there
+//! Passive observability recorder (read by the Inspector / `lila status`). Records TOKEN USAGE
+//! only — everything rides one subscription, so there
 //! is no metered-dollar plane. The cumulative usage meter is the durable part (folded into the
 //! crash snapshot); turn/prompt logs are bounded in-memory ring buffers.
 
@@ -20,7 +20,7 @@ pub struct TokenUsage {
 
 impl TokenUsage {
     /// Billable tokens for the turn (cached input is a subset of input, so it is not re-added —
-    /// this matches the TS eval's `meanTokens = input + output + reasoning`).
+    /// the count is input + output + reasoning).
     pub fn total(&self) -> u64 {
         self.input_tokens + self.output_tokens + self.reasoning_tokens
     }

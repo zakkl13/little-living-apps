@@ -1,5 +1,5 @@
-//! The owner delivery channel: manager text + optional image attachments → Telegram. Port of
-//! `src/transport/deliver.ts`. This is the host-side half of the ATTACH contract: the driver strips
+//! The owner delivery channel: manager text + optional image attachments → Telegram. This is the
+//! host-side half of the ATTACH contract: the driver strips
 //! `ATTACH: /path` lines out of the reply; here we validate each path against disk (the manager can
 //! only NAME paths) and upload the survivors, dropping a hallucinated/missing/non-image file with a
 //! visible note rather than failing the turn.

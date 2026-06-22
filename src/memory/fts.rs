@@ -1,5 +1,5 @@
-//! Derived full-text search index over the memory files (git = truth, sqlite = query). Port of
-//! `src/memory/fts.ts` onto `rusqlite` with an FTS5 virtual table. This is a *derived* index — it
+//! Derived full-text search index over the memory files (git = truth, sqlite = query), on
+//! `rusqlite` with an FTS5 virtual table. This is a *derived* index — it
 //! can be dropped and rebuilt from the markdown at any time, so a corrupt/stale db is never a
 //! data-loss event. It is written through on every memory write.
 

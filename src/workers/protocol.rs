@@ -1,4 +1,4 @@
-//! The reader half of the worker⇄manager contract. Port of `src/workers/protocol.ts`. The writer
+//! The reader half of the worker⇄manager contract. The writer
 //! half (standing rules telling a worker to end with a summary block) lives in `agents.rs`; they are
 //! coupled through [`MANAGER_SUMMARY_MARKER`] so they can never drift.
 

@@ -1,6 +1,6 @@
 //! `lila-eval` — the behavior eval runner. Boots the compiled `lila` binary against the scenario
-//! suite at production parity and reports scores + the token breakdown. See `src/eval/` and
-//! `eval/DESIGN.md`. Thin entry: parse args, run, propagate the exit code.
+//! suite at production parity and reports scores + the token breakdown. Thin entry: parse args,
+//! run, propagate the exit code.
 
 use clap::Parser;
 use lila::eval::run::{self, Args};

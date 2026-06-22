@@ -1,4 +1,4 @@
-//! Block model for memory files. Port of `src/memory/block.ts`.
+//! Block model for memory files.
 //!
 //! Every memory file may carry frontmatter with `description` (always visible to the manager even
 //! when the body isn't) and an optional `limit`. We hand-roll a tiny parser rather than pull in a

@@ -1,4 +1,4 @@
-//! MemFs — the storage backend behind the Lila MCP memory tools. Port of `src/memory/memfs.ts`.
+//! MemFs — the storage backend behind the Lila MCP memory tools.
 //! Implements the fixed command set (view/create/str_replace/insert/delete/rename) over a
 //! `/memories` directory. Source of truth is markdown on disk in a git repo; the FTS index is
 //! written through on every change. `system/` is auto-injected into the prompt in full.
@@ -722,7 +722,11 @@ mod tests {
         mem.create("/memories/archival/i.md", "one\ntwo").unwrap();
         // A line far past the end clamps to append.
         mem.insert("/memories/archival/i.md", 999, "last").unwrap();
-        assert!(mem.view("/memories/archival/i.md", None).unwrap().ends_with("last"));
+        assert!(
+            mem.view("/memories/archival/i.md", None)
+                .unwrap()
+                .ends_with("last")
+        );
         assert!(mem.insert("/memories/archival/missing.md", 0, "x").is_err());
     }
 

@@ -1,4 +1,4 @@
-//! Environment loading + validation. Port of `sprite-codex-bot/src/config.ts`.
+//! Environment loading + validation.
 //!
 //! The bot REFUSES to start if a billing-flip API key is set, because it silently moves the active
 //! backend off its subscription onto metered API billing. Which key is fatal depends on the backend:
@@ -204,7 +204,7 @@ pub const ALL_BILLING_FLIP_KEYS: &[&str] =
     &["OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY"];
 
 /// Build the env handed to a spawned CLI: inherit everything except billing-flip keys, then layer on
-/// `extra`. Port of `sanitizedEnv` in `src/workers/runner.ts`.
+/// `extra`.
 pub fn sanitized_env(extra: &[(&str, &str)]) -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars()
         .filter(|(k, _)| !ALL_BILLING_FLIP_KEYS.contains(&k.as_str()))

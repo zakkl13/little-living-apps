@@ -88,8 +88,8 @@ log "Creating $APP_DIR + $DATA_DIR/{codex,memory,state}"
 mkdir -p "$APP_DIR" "$CODEX_HOME" "$MEMORY_DIR" "$STATE_DIR"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR" "$DATA_DIR"
 run_as "git -C '$APP_DIR' rev-parse --git-dir >/dev/null 2>&1 || { git -C '$APP_DIR' init -q && git -C '$APP_DIR' config user.email 'lila@localhost' && git -C '$APP_DIR' config user.name 'Little Living Apps'; }"
-# The worker AGENTS.md (standing rules) is written into the workspace by the manager at startup from
-# src/workers/agents.ts — no static file to seed here.
+# The worker AGENTS.md (standing rules) is written into the workspace by the manager at startup —
+# no static file to seed here.
 
 # --- 2. Per-instance env file -----------------------------------------------------------------
 log "Writing $ENV_FILE"

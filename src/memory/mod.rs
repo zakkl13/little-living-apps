@@ -1,5 +1,5 @@
 //! The manager's durable memory: a `/memories` directory of git-tracked markdown with a derived
-//! FTS5 index. Port of `src/memory/*`.
+//! FTS5 index.
 
 pub mod block;
 pub mod fts;

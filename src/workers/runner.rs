@@ -1,5 +1,5 @@
-//! The worker runner seam: a single-shot backend run. Port of the `CodexRunner` interface in
-//! `src/workers/runner.ts`. Workers are purely ephemeral — every `run` is a FRESH session that runs
+//! The worker runner seam: a single-shot backend run. Workers are purely ephemeral — every `run`
+//! is a FRESH session that runs
 //! one objective and is never resumed.
 
 use std::path::PathBuf;
@@ -54,7 +54,7 @@ pub trait Runner: Send + Sync {
     async fn login_status(&self) -> LoginStatus;
 }
 
-/// Turn a non-zero-exit detail into owner-facing text (Codex wording). Port of `friendlyError`.
+/// Turn a non-zero-exit detail into owner-facing text (Codex wording).
 pub fn friendly_error(detail: &str) -> String {
     let clipped: String = detail.chars().take(1500).collect();
     let lower = clipped.to_lowercase();
@@ -79,7 +79,7 @@ pub fn friendly_error(detail: &str) -> String {
     format!("⚠️ The agent run failed: {clipped}")
 }
 
-/// Claude-wording variant of [`friendly_error`]. Port of `friendlyClaudeError`.
+/// Claude-wording variant of [`friendly_error`].
 pub fn friendly_claude_error(detail: &str) -> String {
     let clipped: String = detail.chars().take(1500).collect();
     let lower = clipped.to_lowercase();

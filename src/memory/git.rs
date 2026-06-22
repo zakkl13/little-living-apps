@@ -1,4 +1,4 @@
-//! Git changelog for the memory repo. Port of `src/memory/git.ts`: every backend write is a commit,
+//! Git changelog for the memory repo: every backend write is a commit,
 //! so history is a literal changelog of what the manager has learned. We shell out to `git` (no
 //! native git library) — keeps the dependency tree light and the static binary musl-friendly.
 

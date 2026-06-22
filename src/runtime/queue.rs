@@ -1,5 +1,5 @@
-//! The durable in-memory queue feeding the serialized loop. Port of `src/runtime/eventQueue.ts`
-//! (the storage half — async wakeup is provided by an `mpsc` channel in the app).
+//! The durable in-memory queue feeding the serialized loop (the storage half — async wakeup is
+//! provided by an `mpsc` channel in the app).
 //!
 //! Serializing turns is the core invariant that keeps memory + transcript coherent without locks:
 //! one consumer drains this, one turn at a time.

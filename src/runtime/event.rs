@@ -1,4 +1,4 @@
-//! Events that feed the serialized manager loop. Port of `src/runtime/eventQueue.ts`'s event model.
+//! Events that feed the serialized manager loop.
 //!
 //! Two producers — owner messages (from the Telegram poller) and worker-completion events (from the
 //! orchestrator). One consumer drains them, one turn at a time. Ids are random (uuid) rather than a
