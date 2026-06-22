@@ -1,4 +1,5 @@
-//! The Codex manager backend, on `codex-client-sdk`.
+//! The Codex manager backend, on the vendored `codex` client (crate `lila-codex`, see
+//! vendor/lila-codex/).
 //! Capability boundary — the manager's "no hands": shell off, web off, read-only sandbox, network
 //! off. Its ONLY tools are the Lila MCP server's. Auth rides the cached ChatGPT-subscription login;
 //! billing-flip keys are stripped from the CLI env.

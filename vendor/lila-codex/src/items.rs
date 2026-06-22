@@ -11,6 +11,11 @@ pub enum CommandExecutionStatus {
     Completed,
     /// Command failed before producing a completed state.
     Failed,
+    /// A status emitted by a newer codex CLI that this SDK doesn't yet model. Deserializing into
+    /// this catch-all keeps the whole event stream from failing with `unknown variant`; lila treats
+    /// it as a no-op. See the crate root note on forward compatibility.
+    #[serde(other)]
+    Unknown,
 }
 
 /// Command execution output item.
@@ -39,6 +44,10 @@ pub enum PatchChangeKind {
     Delete,
     /// File was modified in place.
     Update,
+    /// A change kind emitted by a newer codex CLI that this SDK doesn't yet model (see the crate
+    /// root note on forward compatibility).
+    #[serde(other)]
+    Unknown,
 }
 
 /// One changed file within a patch item.
@@ -61,6 +70,10 @@ pub enum PatchApplyStatus {
     Completed,
     /// Patch application failed.
     Failed,
+    /// A status emitted by a newer codex CLI that this SDK doesn't yet model (see the crate root
+    /// note on forward compatibility).
+    #[serde(other)]
+    Unknown,
 }
 
 /// File change item containing patch metadata.
@@ -84,6 +97,10 @@ pub enum McpToolCallStatus {
     Completed,
     /// MCP tool call failed.
     Failed,
+    /// A status emitted by a newer codex CLI that this SDK doesn't yet model (see the crate root
+    /// note on forward compatibility).
+    #[serde(other)]
+    Unknown,
 }
 
 /// Successful MCP tool call result payload.
@@ -197,4 +214,9 @@ pub enum ThreadItem {
     TodoList(TodoListItem),
     /// Error payload.
     Error(ErrorItem),
+    /// An item `type` emitted by a newer codex CLI that this SDK doesn't yet model. Deserializing
+    /// into this catch-all keeps the whole event stream from failing with `unknown variant`; lila
+    /// treats it as a no-op. See the crate root note on forward compatibility.
+    #[serde(other)]
+    Unknown,
 }

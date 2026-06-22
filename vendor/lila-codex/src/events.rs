@@ -122,4 +122,9 @@ pub enum ThreadEvent {
         /// Human-readable stream-level error message.
         message: String,
     },
+    /// An event `type` emitted by a newer codex CLI that this SDK doesn't yet model. Deserializing
+    /// into this catch-all keeps the whole event stream from failing with `unknown variant`; lila
+    /// treats it as a no-op. See the crate root note on forward compatibility.
+    #[serde(other)]
+    Unknown,
 }

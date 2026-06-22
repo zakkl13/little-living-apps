@@ -361,21 +361,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-client-sdk"
-version = "0.107.0"
-dependencies = [
- "async-stream",
- "futures",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "which 8.0.4",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1158,6 +1143,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lila-codex"
+version = "0.107.0"
+dependencies = [
+ "async-stream",
+ "futures",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "which 8.0.4",
+]
+
+[[package]]
 name = "lila-rs"
 version = "0.1.0"
 dependencies = [
@@ -1167,8 +1167,8 @@ dependencies = [
  "axum",
  "clap",
  "claude-agent-sdk-rust",
- "codex-client-sdk",
  "futures",
+ "lila-codex",
  "predicates",
  "regex",
  "reqwest 0.13.4",

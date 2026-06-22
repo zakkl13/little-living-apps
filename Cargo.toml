@@ -12,7 +12,9 @@ async-trait = "0.1.89"
 axum = "0.8.9"
 clap = { version = "4.6.1", features = ["derive"] }
 claude-agent-sdk-rust = "1.0.0"
-codex-client-sdk = "0.107.0"
+# In-tree fork of the codex-client-sdk crate (its lib is still named `codex`, so consumers use
+# `use codex::...` unchanged). See vendor/lila-codex/NOTICE for why we fork.
+lila-codex = { path = "vendor/lila-codex" }
 futures = "0.3.32"
 regex = "1.11.1"
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "multipart", "stream", "http2", "charset", "rustls"] }
@@ -56,10 +58,3 @@ testing = []
 strip = true
 lto = "thin"
 codegen-units = 1
-
-# Vendored codex-client-sdk with one upstream gap fixed: the 0.107 `PatchApplyStatus` enum lacks the
-# `in_progress` variant that codex CLI ≥ ~0.141 emits for in-flight file patches, which otherwise
-# fails EVERY codex worker run (and prod) with `unknown variant 'in_progress'`. The patch adds the
-# variant; see vendor/codex-client-sdk/src/items.rs. Drop this when a CLI-matched SDK ships on crates.io.
-[patch.crates-io]
-codex-client-sdk = { path = "vendor/codex-client-sdk" }

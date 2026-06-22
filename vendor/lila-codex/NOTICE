@@ -1,0 +1,27 @@
+lila-codex
+==========
+
+This crate is a fork of `codex-client-sdk` (crates.io version 0.107.0), originally from:
+
+    https://github.com/tosimpletech/agent-client-sdk-package
+
+The original work is licensed under the Apache License, Version 2.0 (see LICENSE).
+The original crate's lib name `codex` is preserved so consumers keep `use codex::...`.
+
+It is vendored into lila-rs and is NOT published to crates.io. lila carries it as a fork
+because the published SDK lags the codex CLI's JSONL protocol and hard-fails on output that
+newer CLIs emit.
+
+Modifications by the lila-rs authors
+------------------------------------
+
+- Added the `in_progress` variant to `PatchApplyStatus` (src/items.rs). The codex CLI
+  (≥ ~0.141) emits this for in-flight file patches; the unpatched 0.107 SDK fails every
+  worker run with `unknown variant 'in_progress'`.
+
+- Forward-compatibility hardening (src/items.rs, src/events.rs): added a `#[serde(other)]`
+  catch-all variant (`Unknown`) to the protocol enums that mirror CLI output —
+  `CommandExecutionStatus`, `PatchChangeKind`, `PatchApplyStatus`, `McpToolCallStatus`,
+  `ThreadItem`, and `ThreadEvent`. An unrecognized value from a newer CLI now deserializes
+  into `Unknown` instead of failing the whole event stream; lila treats it as a no-op. This
+  is the structural fix for the recurring `unknown variant` class of breakage.

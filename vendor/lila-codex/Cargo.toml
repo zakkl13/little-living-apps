@@ -1,0 +1,26 @@
+[package]
+name = "lila-codex"
+version = "0.107.0"
+edition = "2024"
+rust-version = "1.85"
+description = "lila's in-tree fork of codex-client-sdk: a Rust client for the Codex agent over CLI-over-JSONL"
+license = "Apache-2.0"
+# Forked from https://github.com/tosimpletech/agent-client-sdk-package (crates.io: codex-client-sdk
+# 0.107.0). Not published; vendored solely for lila. See NOTICE for the changes lila carries.
+publish = false
+
+# Crate name stays `codex` so consumers keep `use codex::...` unchanged.
+[lib]
+name = "codex"
+path = "src/lib.rs"
+
+[dependencies]
+async-stream = "0.3"
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+which = "8"
