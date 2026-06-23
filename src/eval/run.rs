@@ -158,17 +158,11 @@ pub async fn main(args: Args) -> i32 {
     eprintln!("results → {}", out_dir.display());
     // Stamp every per-trial file with a per-run id so repeated runs into the SAME --out-dir
     // accumulate instead of clobbering (`load_results` then aggregates the lot).
-    let summaries = match run_all(
-        &picked,
-        &opts,
-        args.trials,
-        &backend,
-        &out_dir,
-        &run_id,
-        &judge,
-    )
-    .await
-    {
+    let sink = ResultsSink {
+        dir: &out_dir,
+        run_id: &run_id,
+    };
+    let summaries = match run_all(&picked, &opts, args.trials, &backend, &sink, &judge).await {
         Ok(summaries) => summaries,
         Err(err) => {
             eprintln!("could not persist eval results: {err:#}");
@@ -195,14 +189,20 @@ fn print_list(picked: &[Scenario]) {
     }
 }
 
+/// Where per-trial reports are written: a results dir plus the run id that names each file. The two
+/// always travel together, so they ride as one argument.
+struct ResultsSink<'a> {
+    dir: &'a std::path::Path,
+    run_id: &'a str,
+}
+
 /// Run every picked scenario × trials, persisting each trial report, returning per-scenario summaries.
 async fn run_all(
     picked: &[Scenario],
     opts: &HarnessOptions,
     trials: u32,
     backend: &str,
-    out_dir: &std::path::Path,
-    run_id: &str,
+    sink: &ResultsSink<'_>,
     judge: &JudgeCfg,
 ) -> anyhow::Result<Vec<ScenarioSummary>> {
     let mut summaries = Vec::new();
@@ -212,8 +212,8 @@ async fn run_all(
             eprint!("▶ {} (trial {}/{}) … ", scenario.name, trial, trials);
             let report = run_one(scenario, trial, opts, judge).await;
             print_trial_line(&report);
-            persist_trial(out_dir, run_id, &report).with_context(|| {
-                format!("{} trial {trial} in {}", scenario.name, out_dir.display())
+            persist_trial(sink.dir, sink.run_id, &report).with_context(|| {
+                format!("{} trial {trial} in {}", scenario.name, sink.dir.display())
             })?;
             rows.push(report);
         }
@@ -417,11 +417,11 @@ fn report_and_diff(summaries: &[ScenarioSummary], args: &Args, out_dir: &std::pa
 
     let baseline = load_baseline();
     let regressed = diff_baseline(summaries, &baseline);
-    if args.update_baseline {
-        if let Err(err) = update_baseline(summaries, baseline) {
-            eprintln!("could not update baseline: {err:#}");
-            return 1;
-        }
+    if args.update_baseline
+        && let Err(err) = update_baseline(summaries, baseline)
+    {
+        eprintln!("could not update baseline: {err:#}");
+        return 1;
     }
     eprintln!("results → {}", out_dir.display());
     if args.strict && regressed { 1 } else { 0 }
