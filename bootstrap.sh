@@ -5,7 +5,8 @@
 #     cp .env.example .env && $EDITOR .env        # fill in tokens
 #     sudo bash bootstrap.sh
 #
-# Installs the toolchain (mise -> Ruby + Node, the agent CLI, Playwright), the Rust toolchain, BUILDS
+# Installs the toolchain (mise -> Node + the active stack's app language, the agent CLI, Playwright),
+# the Rust toolchain, BUILDS
 # the self-contained `lila` binary to /opt/lila/bin, creates the data dirs + workspace, and
 # installs+enables the systemd service. Idempotent: safe to re-run.
 #
@@ -68,9 +69,11 @@ if [[ ! -x "$MISE" ]]; then
 fi
 log "mise: $("$MISE" --version 2>/dev/null || echo unknown)"
 run_as "cd '$REPO_DIR' && '$MISE' trust && '$MISE' install"
-# Promote the pinned toolchain to the GLOBAL default so `mise exec -- node/<cli>` resolves from any
-# dir (the Playwright install and workers run in arbitrary subdirs with no local .mise.toml).
-run_as "'$MISE' use -g ruby@3.3 node@22"
+# Promote Node to the GLOBAL default so `mise exec -- node/<cli>` resolves from any dir (the Playwright
+# install and workers run in arbitrary subdirs with no local .mise.toml). The APP language toolchain
+# is NOT installed here — it follows the active stack and is added after the lila binary is built (so
+# `lila stack` can read it). Node is always needed (agent CLI + validation), the app stack is not.
+run_as "'$MISE' use -g node@22"
 
 # --- 4. Agent CLI + Rust toolchain + BUILD the lila binary ------------------------------------
 log "Installing $agent_pkg (the $backend CLI, under the mise-managed Node)"
@@ -93,6 +96,18 @@ run_as "cd '$REPO_DIR' && CARGO_BUILD_JOBS=2 \"\$HOME/.cargo/bin/cargo\" build -
 install -d -m 0755 /opt/lila/bin
 install -m 0755 "$REPO_DIR/target/release/lila" /opt/lila/bin/lila
 log "Installed /opt/lila/bin/lila ($(/opt/lila/bin/lila --version 2>/dev/null || echo lila))"
+
+# --- 4a. App toolchain from the ACTIVE STACK (now that `lila stack` can read the contract) -------
+# The kind of app the team builds is a stack plugin (stacks/<name>/); its language toolchain (ruby@3.3
+# for rails-pwa, nothing extra for node-react) is installed globally here. Node is already in place.
+LILA_STACK="${LILA_STACK:-rails-pwa}"
+eval "$(cd "$REPO_DIR" && /opt/lila/bin/lila stack "$LILA_STACK")" ||
+  die "Unknown LILA_STACK '$LILA_STACK' (expected a directory under $REPO_DIR/stacks/)."
+log "Active app stack: $LILA_STACK_DISPLAY"
+if [[ -n "$LILA_STACK_TOOLCHAIN" ]]; then
+  log "Installing the $LILA_STACK app toolchain: $LILA_STACK_TOOLCHAIN"
+  run_as "'$MISE' use -g $LILA_STACK_TOOLCHAIN"
+fi
 
 # The mise node bin dir holds BOTH the agent CLI and the `node` it shebangs to; the native systemd
 # unit puts it on PATH (it gets no mise shell hook). Resolve it now for the unit substitution below.

@@ -5,6 +5,7 @@ mod config_check;
 mod doctor;
 mod memory_cmd;
 mod run;
+mod stack;
 mod status;
 
 use crate::cli::{Command, McpAction, MemoryAction};
@@ -24,6 +25,7 @@ pub async fn dispatch(command: Command) -> i32 {
                 1
             }
         },
+        Command::Stack { name } => stack::run(&name),
     }
 }
 

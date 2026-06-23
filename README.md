@@ -6,7 +6,7 @@
 
 Text it into being. Text it as it grows.
 
-<a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot 'build me a reading log'; an agent team scaffolds a working app, then ships a requested feature — tags, filters, and a chart — into the same app." width="100%"></a>
+<a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot to build a shower-thought app; an agent team creates a phone app that captures ideas into a visual knowledge map, then ships a calmer dark mode after another text request." width="100%"></a>
 
 [![ci](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
@@ -20,7 +20,7 @@ Text it into being. Text it as it grows.
 ## What this is
 
 **Little Living Apps is a living-app agent framework.** You text a manager on Telegram in plain
-language; a small team of agents builds, ships, and then *keeps maintaining* a real web app for you —
+language; a small team of agents builds, ships, and then *keeps maintaining* a real web or mobile app for you —
 indefinitely.
 
 The framework deals in **apps and functionality, not code**. You describe what the app should *do* —
@@ -35,35 +35,6 @@ The shape is small enough to hold in your head: **one manager, one app, one box 
 thing runs over a Telegram long-poll — no open ports, no public URL, no cloud bill from us, because
 there is no us. You bring the host, the bot, and your existing ChatGPT or Claude subscription. That's
 the entire dependency list.
-
-### A day in the life
-
-> **You** — build me a reading log. track title, author, rating, a few notes.
->
-> **Manager** — On it. Scaffolding a Rails PWA, wiring up the model and a list/detail view.
->
-> *…a few minutes pass…*
->
-> **Manager** — Done. Add/edit/rate/note all working; auth is on. Verified in a real browser —
-> here's the list view after I added two test books. It's live at `127.0.0.1:3000` (private to the
-> box until you publish). Want it on a domain?
-> 🖼️ *screenshot attached*
->
-> **You** — yeah, books.mydomain.com
->
-> **Manager** — Published behind HTTPS at **books.mydomain.com**. Certificate issued, redirect from
-> http in place.
->
-> **You** — add tags by genre, multiple per book, filter the list by tag
->
-> **Manager** — Got it — that's a migration plus a filter UI, I'll have it tonight.
->
-> *…next morning…*
->
-> **Manager** — Tags shipped. Many-per-book, the list filters by tag, backfilled your existing
-> entries as "unsorted." Validated the filter end to end before this message.
-
-You never opened an editor. You never saw the code. You don't have to.
 
 ## Quick start
 
@@ -88,7 +59,7 @@ secrets it can't invent.
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-sudo bash bootstrap.sh                    # Ruby+Node+Rust, agent CLI, builds the lila binary, systemd
+sudo bash bootstrap.sh                    # the active stack's toolchain + Node + Rust, agent CLI, builds the lila binary, systemd
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
 sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex \
@@ -148,10 +119,7 @@ get wrong.
 
 ## How it works
 
-The industry is converging on an idea: the leverage in agents isn't the model, it's the **loop you
-build around it** — *"the potential in agents is in the loops you build around them"*
-([LangChain, "The Art of Loop Engineering"](https://www.langchain.com/blog/the-art-of-loop-engineering)).
-Little Living Apps is that idea, made literal. It isn't a request-and-response bot; it's a **flywheel**
+Little Living Apps isn't a request-and-response bot; it's a **flywheel**
 that keeps turning, and every turn ships a change *and* deepens memory — so the next turn starts
 smarter.
 
@@ -208,17 +176,15 @@ same internal seams.
 
 | | `codex` (default) | `claude` |
 |---|---|---|
-| Driver | `codex-client-sdk` (Rust) → `codex` CLI | `claude-agent-sdk-rust` → `claude` CLI |
+| Driver | `lila-codex` (vendored fork of `codex-client-sdk`, Rust) → `codex` CLI | `claude-agent-sdk-rust` → `claude` CLI |
 | Subscription | ChatGPT | Claude Pro/Max |
 | One-time host auth | `codex login --device-auth` | `claude setup-token` |
 | Pay-per-token key (must be **unset**) | `OPENAI_API_KEY` / `CODEX_API_KEY` | `ANTHROPIC_API_KEY` |
 
 *Why:* these are the two frontier coding agents that can be driven off a flat-rate consumer
 subscription instead of metered API billing — so the running cost is a plan you already pay for, not a
-meter that ticks while agents work. **We recommend Codex (the default).** A living app is
-token-hungry — workers routinely burn six- and seven-figure token counts scaffolding and iterating on
-a real app, on *either* backend — and a ChatGPT subscription comes with a far more generous token
-allocation than a Claude plan, so Codex is the backend least likely to hit a ceiling mid-build. (The
+meter that ticks while agents work. **We recommend Codex (the default).** a ChatGPT subscription comes 
+with a far more generous token allocation than a Claude plan, so Codex is the backend least likely to hit a ceiling mid-build. (The
 two backends consume comparable tokens per task: both now report **gross** input — fresh plus cache
 reads/creation — so the eval's per-task counts line up. An earlier ~50× Codex-vs-Claude gap was a
 measurement artifact of counting cache reads for Codex but not Claude, since fixed.) Claude adapts
@@ -228,11 +194,6 @@ behind one seam means you can **swap on a live instance** with `/backend claude`
 codex`): it persists the choice and restarts clean, losing no memory. *Cost:* a ToS caveat on the
 Claude backend (below), and you watch concurrency if you run many instances on one account.
 
-> **Subscription-terms note.** Anthropic's docs say third-party developers may not *offer* claude.ai
-> login or rate limits in products built on the Agent SDK without prior approval. This project is
-> single-owner, bring-your-own-everything, run on a box you own and not monetized — i.e. personal
-> use, the same posture under which the Codex backend rides a ChatGPT subscription. Don't turn around
-> and offer it to other people without sign-off.
 
 ### Telegram — the interface
 
@@ -244,7 +205,7 @@ is also what makes the box private by default: nothing is reachable from the int
 publish. *Cost:* it's a chat, not a rich dashboard. (For watching the *agent system* itself, there's
 a local Inspector.)
 
-### Ruby on Rails — what the agents build
+### The app stack — Rails 8 + PWA by default, pluggable
 
 Ask for an app and a worker scaffolds it with `lila-new-app`: a minimal **Rails 8 + PWA** project —
 SQLite on the Solid stack, Hotwire, Rails' built-in auth — running in **reload mode**, so edits go
@@ -257,6 +218,13 @@ live without a deploy step, which is exactly the loop a maintaining agent needs.
 kept deliberately thin (Rails defaults plus PWA and auth) so the agents build *on top of* a sane
 baseline instead of fighting a heavy template. *Cost:* it's opinionated; you're building in Rails.
 
+**The stack is a plugin.** Each lives in `stacks/<name>/` — a `stack.toml` plus a scaffold script and
+two prompt fragments — and you pick one per instance with `LILA_STACK` (default `rails-pwa`). To build
+a different *kind* of app (another framework, language, or even a non-web target), drop in a new
+directory: no Rust changes, no recompile. Rails 8 + PWA ships as the batteries-included default;
+`node-react` (a zero-build Node + React PWA) ships alongside it. See [`stacks/README.md`](stacks/README.md)
+to add your own.
+
 ### Rust — the orchestrator
 
 The manager loop, event queue, MCP tools, worker runner, and durability layer that hold the system
@@ -268,10 +236,11 @@ so it's built for exactly that — a single serialized loop, no global mutable s
 every external boundary an injectable seam, which is what lets the deterministic suite (below) drive
 the *real compiled binary* against fakes. CI denies clippy warnings and caps cyclomatic complexity at
 6 per function. It ships as one binary — no runtime, no `node_modules` for the brain on the host.
-*Cost:* a two-language system — Rust for the brain, Ruby for the apps it builds; and the host builds
-that binary once at `bootstrap.sh` time (a few minutes) rather than installing a prebuilt package.
+*Cost:* a two-language system — Rust for the brain, and whatever the chosen stack uses for the apps
+(Ruby/Rails by default); and the host builds that binary once at `bootstrap.sh` time (a few minutes)
+rather than installing a prebuilt package.
 
-## Evals
+## Tests & Evals
 
 We verify in two layers, because agents have a deterministic half and a judgment half:
 
@@ -321,10 +290,11 @@ works if an earlier run was interrupted before writing its aggregate report.
 
 ## Status
 
-Host-native and runnable today. The manager runs on a plain VM over long-poll; the app substrate is
-a minimal Rails 8 + PWA scaffold in reload mode. On the roadmap: giving the apps first-class
-self-observability, so the team can watch and maintain against real runtime behavior the way an
-engineer leans on an APM dashboard (see `ROADMAP.md`).
+Host-native and runnable today. The manager runs on a plain VM over long-poll; the app it builds is a
+**pluggable stack** (Rails 8 + PWA by default, `node-react` alongside it, and any directory you drop
+into `stacks/`). On the roadmap: more first-class stacks beyond the default, and giving the apps
+first-class self-observability, so the team can watch and maintain against real runtime behavior the
+way an engineer leans on an APM dashboard (see `ROADMAP.md`).
 
 ## Adopt it. Fork it. Run it on a box you own.
 

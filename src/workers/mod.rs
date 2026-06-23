@@ -11,6 +11,6 @@ pub mod runner;
 // Always compiled, inert unless `LILA_FAKE_BACKEND` is set (the integration-test seam).
 pub mod fake_runner;
 
-pub use agents::WORKER_AGENTS_MD;
+pub use agents::build_worker_agents_md;
 pub use orchestrator::Orchestrator;
 pub use runner::{LoginStatus, RunArgs, RunOutcome, Runner, RunnerError};

@@ -16,6 +16,7 @@ use lila::eval::transcript::{
     Check, ConvMessage, EvalTranscript, TimelineEntry, WorkerPrompt, WorkerSession,
 };
 use lila::runtime::{TraceBlock, UsageMeter};
+use lila::stack::StackProfile;
 
 fn node_available() -> bool {
     Command::new("node")
@@ -23,6 +24,11 @@ fn node_available() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// The default eval stack: a zero-dependency Node server serving a no-build React PWA.
+fn node_stack() -> StackProfile {
+    StackProfile::load("node-react").expect("node-react stack loads")
 }
 
 /// A minimal synthetic transcript a grader can run against.
@@ -176,8 +182,7 @@ fn memory_contains_reads_real_files() {
 fn seed_fixture(overlay: &BTreeMap<String, String>) -> (tempfile::TempDir, EvalTranscript) {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("ws");
-    std::fs::create_dir_all(&ws).unwrap();
-    fixture::write_workspace(&ws, overlay).unwrap();
+    fixture::seed_stack(&node_stack(), &ws, overlay).unwrap();
     fixture::git_commit_fixture(&ws).unwrap();
     let t = Builder::default().build(ws, tmp.path().join("mem"));
     (tmp, t)
@@ -189,13 +194,14 @@ fn base_fixture_is_really_green_and_serves_greet() {
         eprintln!("SKIP base_fixture_is_really_green: node not installed");
         return;
     }
+    let p = node_stack();
     let (_tmp, t) = seed_fixture(&BTreeMap::new());
     assert!(
-        run(&checks::tests_green("base suite green"), &t),
+        run(&checks::tests_green(&p, "base suite green"), &t),
         "base node --test must pass"
     );
     assert!(
-        run(&checks::http_probe("/greet", 200, "greet ok"), &t),
+        run(&checks::http_probe(&p, "/greet", 200, "greet ok"), &t),
         "base /greet → 200"
     );
 }
@@ -206,14 +212,15 @@ fn greet_bug_overlay_really_500s() {
         eprintln!("SKIP greet_bug_overlay_really_500s: node not installed");
         return;
     }
-    let (_tmp, t) = seed_fixture(&fixture::greet_bug_overlay());
+    let p = node_stack();
+    let (_tmp, t) = seed_fixture(&fixture::greet_bug_overlay(&p));
     // The planted bug is real: GET /greet without a name 500s (so http_probe for 200 FAILS).
     assert!(
-        !run(&checks::http_probe("/greet", 200, "greet 200"), &t),
+        !run(&checks::http_probe(&p, "/greet", 200, "greet 200"), &t),
         "bug must make /greet not-200"
     );
     assert!(
-        run(&checks::http_probe("/greet", 500, "greet 500"), &t),
+        run(&checks::http_probe(&p, "/greet", 500, "greet 500"), &t),
         "the bug really 500s"
     );
 }
@@ -224,13 +231,14 @@ fn version_test_overlay_is_really_red() {
         eprintln!("SKIP version_test_overlay_is_really_red: node not installed");
         return;
     }
+    let p = node_stack();
     let overlay = BTreeMap::from([(
         "test/version.test.js".to_string(),
         fixture::VERSION_TEST_JS.to_string(),
     )]);
     let (_tmp, t) = seed_fixture(&overlay);
     assert!(
-        !run(&checks::tests_green("suite"), &t),
+        !run(&checks::tests_green(&p, "suite"), &t),
         "the version test must really be red"
     );
 }

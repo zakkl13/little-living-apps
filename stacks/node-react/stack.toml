@@ -1,0 +1,28 @@
+name    = "node-react"
+display = "Node + React (PWA)"
+
+# Node is always installed by the framework (it runs the agent CLI + Playwright validation), and a
+# zero-build React app needs nothing beyond it, so the app toolchain adds nothing here.
+[toolchain]
+
+# Executed at RUNTIME by the generic bin/new-app (at instance creation), as the service user, in the
+# app dir, with LILA_INSTANCE/APP_DIR/APP_PORT/LILA_DOMAIN/SKIP_AUTH/SERVICE_USER/MISE in env.
+[scaffold]
+script = "scaffold.sh"
+
+# Templated into deploy/lila-app@.service's ExecStart + Environment lines. Portable command:
+# bin/new-app prefixes the mise wrapper for systemd; the eval probe runs it directly. server.js reads
+# the port from $PORT / $APP_PORT.
+[serve]
+exec = "node server.js"
+env = {}
+
+# Drives the eval graders (§E) AND is quoted into the prompts so agents know how to self-validate.
+[validate]
+test_cmd    = "node --test"
+health_path = "/"
+
+# Spliced verbatim into the agent prompts; the only stack-specific prose.
+[prompt]
+worker  = "worker.md"
+manager = "manager.md"

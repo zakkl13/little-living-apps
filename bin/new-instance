@@ -61,6 +61,8 @@ APP_PORT="${APP_PORT:-}"
 INSPECTOR_PORT="${INSPECTOR_PORT:-}"
 LILA_DOMAIN="${LILA_DOMAIN:-}"
 inherit ALLOWED_USER_IDS  # same human owns every instance; the bot token is what differs
+inherit LILA_STACK        # default to the primary's stack unless this instance overrides it
+LILA_STACK="${LILA_STACK:-rails-pwa}"
 [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]] || die "TELEGRAM_BOT_TOKEN is required (create a NEW bot via @BotFather — each instance is its own bot)."
 [[ -n "${ALLOWED_USER_IDS:-}" ]] || die "ALLOWED_USER_IDS is required (not set, and none found in $PRIMARY_ENV)."
 [[ -n "$APP_PORT" ]] || die "APP_PORT is required (pick a free port, e.g. 3001)."
@@ -103,6 +105,7 @@ MEMORY_DIR=$MEMORY_DIR
 MANAGER_STATE_DIR=$STATE_DIR
 CODEX_HOME=$CODEX_HOME
 CODEX_SANDBOX_MODE=danger-full-access
+LILA_STACK=$LILA_STACK
 APP_PORT=$APP_PORT
 LILA_DOMAIN=$LILA_DOMAIN
 INSPECTOR_ENABLED=true
@@ -124,9 +127,9 @@ systemctl daemon-reload
 systemctl enable "lila-manager@$NAME" >/dev/null
 
 # --- 4. Scaffold the app + install/start its template unit (delegates to bin/new-app) ----------
-log "Scaffolding the Rails 8 app at $APP_DIR (via bin/new-app, instance mode)"
+log "Scaffolding the $LILA_STACK app at $APP_DIR (via bin/new-app, instance mode)"
 LILA_INSTANCE="$NAME" WORKSPACE_DIR="$APP_DIR" APP_PORT="$APP_PORT" LILA_DOMAIN="$LILA_DOMAIN" \
-  SERVICE_USER="$SERVICE_USER" ${SKIP_AUTH:+SKIP_AUTH="$SKIP_AUTH"} \
+  LILA_STACK="$LILA_STACK" SERVICE_USER="$SERVICE_USER" ${SKIP_AUTH:+SKIP_AUTH="$SKIP_AUTH"} \
   bash "$REPO_DIR/bin/new-app"
 
 # --- 5. Publish on the instance domain (Caddy) ------------------------------------------------

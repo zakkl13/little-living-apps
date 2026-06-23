@@ -1,18 +1,20 @@
-# systemd TEMPLATE unit for the Rails 8 app of one INSTANCE (paired with lila-manager@%i). The %i
-# instance name fixes the app dir at /srv/%i and the env file at /etc/lila/%i.env (which carries
-# APP_PORT). bin/new-app installs this template once per host (for the primary via bootstrap.sh, and
-# for each added instance via bin/new-instance) and enables one app per instance:
+# systemd TEMPLATE unit for the app of one INSTANCE (paired with lila-manager@%i). The %i instance
+# name fixes the app dir at /srv/%i and the env file at /etc/lila/%i.env (which carries APP_PORT).
+# bin/new-app installs this template once per host (for the primary via bootstrap.sh, and for each
+# added instance via bin/new-instance), substituting the ACTIVE STACK's serve command + environment
+# (read from stacks/<stack>/stack.toml via `lila stack`), then enables one app per instance:
 #
 #     sudo systemctl enable --now lila-app@<name>
 #
-# RELOAD MODE: runs in the development environment on purpose, so a worker's edits to existing code
-# go live on the NEXT request (no restart). Structural changes — a new gem, an initializer, routes,
-# a migration — still need:  sudo systemctl restart lila-app@<name>
+# RELOAD MODE: the app runs the way its stack intends (Rails dev mode goes live on the next request;
+# other stacks restart the process). Structural changes — a new dependency, a config change, a route,
+# a migration — need:  sudo systemctl restart lila-app@<name>
 #
 # The app binds to localhost only; Caddy fronts it on the instance's domain (deploy/Caddyfile) and
-# terminates TLS. Nothing here is public on its own.
+# terminates TLS. Nothing here is public on its own. The placeholders below are filled by bin/new-app
+# at install time (user, mise path, the stack's serve command, and its environment block).
 [Unit]
-Description=little-living-apps app [%i] (the Rails 8 app the agent builds & maintains)
+Description=little-living-apps app [%i] (the app the agent builds & maintains)
 After=network-online.target
 Wants=network-online.target
 
@@ -21,9 +23,10 @@ Type=simple
 User=__USER__
 WorkingDirectory=/srv/%i
 EnvironmentFile=/etc/lila/%i.env
-Environment=RAILS_ENV=development
-# APP_PORT comes from /etc/lila/%i.env; systemd expands ${APP_PORT} from the EnvironmentFile.
-ExecStart=__MISE__ exec -- bin/rails server -b 127.0.0.1 -p ${APP_PORT}
+__ENV__
+# The stack's serve command, run under mise so its toolchain is on PATH. APP_PORT comes from
+# /etc/lila/%i.env; systemd expands ${APP_PORT} from the EnvironmentFile.
+ExecStart=__MISE__ exec -- __EXEC__
 Restart=always
 RestartSec=3
 

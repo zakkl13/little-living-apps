@@ -8,12 +8,13 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
 
-use lila::eval::checks::{rails_http_probe, rails_tests_green};
+use lila::eval::checks::{http_probe, tests_green};
 use lila::eval::fixture::{
-    RAILS_VERSION_TEST, git_commit_fixture, rails_greet_bug_overlay, rails_template_dir, seed_rails,
+    RAILS_VERSION_TEST, git_commit_fixture, rails_greet_bug_overlay, seed_stack,
 };
 use lila::eval::transcript::{Check, EvalTranscript};
 use lila::runtime::UsageMeter;
+use lila::stack::StackProfile;
 
 fn ruby_available() -> bool {
     Command::new("ruby")
@@ -21,6 +22,11 @@ fn ruby_available() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+/// The rails-pwa stack profile (production parity).
+fn rails_stack() -> StackProfile {
+    StackProfile::load("rails-pwa").expect("rails-pwa stack loads")
 }
 
 fn transcript_for(workspace: PathBuf) -> EvalTranscript {
@@ -40,7 +46,7 @@ fn transcript_for(workspace: PathBuf) -> EvalTranscript {
 fn seed(overlay: &BTreeMap<String, String>) -> (tempfile::TempDir, EvalTranscript) {
     let tmp = tempfile::tempdir().unwrap();
     let ws = tmp.path().join("workspace");
-    seed_rails(&ws, overlay).unwrap();
+    seed_stack(&rails_stack(), &ws, overlay).unwrap();
     git_commit_fixture(&ws).unwrap();
     let t = transcript_for(ws);
     (tmp, t)
@@ -53,9 +59,10 @@ fn pass(c: &Check, t: &EvalTranscript) -> bool {
 #[test]
 fn rails_fixture_planted_realities() {
     // The template's gems (vendor/bundle, 78MB) are gitignored and installed once by
-    // setup-rails.sh — without them `bin/rails` can't boot, so skip (e.g. on CI, which has ruby +
+    // setup.sh — without them `bin/rails` can't boot, so skip (e.g. on CI, which has ruby +
     // the committed template source but no `bundle install`).
-    let template = rails_template_dir();
+    let p = rails_stack();
+    let template = p.eval_fixture_dir();
     if !ruby_available()
         || !template.join("bin/rails").exists()
         || !template.join("vendor/bundle").exists()
@@ -67,18 +74,18 @@ fn rails_fixture_planted_realities() {
     // Base app: suite green and GET /greet → 200.
     let (_b, base) = seed(&BTreeMap::new());
     assert!(
-        pass(&rails_tests_green("base green"), &base),
+        pass(&tests_green(&p, "base green"), &base),
         "base bin/rails test must pass"
     );
     assert!(
-        pass(&rails_http_probe("/greet", 200, "greet ok"), &base),
+        pass(&http_probe(&p, "/greet", 200, "greet ok"), &base),
         "base /greet → 200"
     );
 
     // Greet-bug overlay: GET /greet without a name no longer 200 (it 500s on nil.strip).
     let (_g, bug) = seed(&rails_greet_bug_overlay());
     assert!(
-        !pass(&rails_http_probe("/greet", 200, "greet 200"), &bug),
+        !pass(&http_probe(&p, "/greet", 200, "greet 200"), &bug),
         "the planted bug must make /greet not-200"
     );
 
@@ -89,7 +96,7 @@ fn rails_fixture_planted_realities() {
     )]);
     let (_v, red) = seed(&overlay);
     assert!(
-        !pass(&rails_tests_green("suite"), &red),
+        !pass(&tests_green(&p, "suite"), &red),
         "the version test must really be red"
     );
 }

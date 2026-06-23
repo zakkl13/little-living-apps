@@ -1,97 +1,27 @@
 //! The real workspace every trial gets, seeded and committed to a fresh git repo so real workers
-//! have a real codebase to read, edit, test, serve, diff and commit. Two substrates:
+//! have a real codebase to read, edit, test, serve, diff and commit.
 //!
-//! - **Rails** (`Substrate::Rails`) — a pre-scaffolded Rails 8 app (`eval/fixtures/rails-app`, built
-//!   once by `setup-rails.sh`), copied per trial via an APFS clone (instant). This is production
-//!   parity (the persona/AGENTS.md assert a Rails 8 app), so worker scenarios that plant real bugs
-//!   and grade the app's behavior are measured on the substrate the agent is actually told it has.
-//! - **Node** (`Substrate::Node`) — a tiny dependency-free Node HTTP app, the zero-toolchain fast
-//!   path. Substrate-agnostic behaviors (and the worker-free memory scenarios) use it to stay cheap.
+//! The app is whatever the scenario's **stack** (`stacks/<name>/`) provides: each stack ships a
+//! pre-scaffolded `eval/fixture/` template, cloned per trial via an APFS clone (instant). The default
+//! eval stack is **node-react** (a zero-dependency Node server serving a no-build React PWA — cheap,
+//! no toolchain), while **rails-pwa** stays available for production-parity runs. Whichever stack a
+//! scenario names, the worker `AGENTS.md`/`CLAUDE.md` are deployed exactly as production deploys them
+//! (assembled by [`crate::workers::build_worker_agents_md`] for that stack), so a worker is told it
+//! has precisely the app it really has.
 //!
 //! The planted realities (base suite green, the greet bug really 500s, the version test really red)
-//! are proven by `cargo test`, so a failed eval is always about the agent — not the fixture.
+//! are proven by `cargo test` (see `tests/eval_graders.rs` and `tests/eval_rails.rs`), so a failed
+//! eval is always about the agent — not the fixture.
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
-use crate::workers::WORKER_AGENTS_MD;
+use crate::stack::StackProfile;
+use crate::workers::build_worker_agents_md;
 
-/// Which app the workers operate on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Substrate {
-    /// The pre-scaffolded Rails 8 app (production parity).
-    Rails,
-    /// The tiny dependency-free Node app (zero-toolchain fast path).
-    Node,
-}
-
-const SERVER_JS: &str = r#"// Lilapp — a deliberately tiny Node HTTP app (no dependencies).
-const http = require("node:http");
-
-const server = http.createServer((req, res) => {
-  try {
-    const url = new URL(req.url, "http://localhost");
-    if (req.method === "GET" && url.pathname === "/") {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("Lilapp is running\n");
-      return;
-    }
-    if (req.method === "GET" && url.pathname === "/greet") {
-      const name = url.searchParams.get("name") ?? "world";
-      const body = `Hello, ${name.trim()}!\n`;
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end(body);
-      return;
-    }
-    res.writeHead(404, { "content-type": "text/plain" });
-    res.end("not found\n");
-  } catch (err) {
-    res.writeHead(500, { "content-type": "text/plain" });
-    res.end("internal error\n");
-  }
-});
-
-module.exports = server;
-
-if (require.main === module) {
-  const port = Number(process.env.PORT) || 3000;
-  server.listen(port, () => console.log(`lilapp listening on http://127.0.0.1:${port}`));
-}
-"#;
-
-const SERVER_TEST_JS: &str = r#"const test = require("node:test");
-const assert = require("node:assert/strict");
-const server = require("../server.js");
-
-async function withServer(fn) {
-  await new Promise((resolve) => server.listen(0, resolve));
-  const base = `http://127.0.0.1:${server.address().port}`;
-  try {
-    await fn(base);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
-}
-
-test("root responds 200", async () => {
-  await withServer(async (base) => {
-    const res = await fetch(`${base}/`);
-    assert.equal(res.status, 200);
-    assert.match(await res.text(), /Lilapp/);
-  });
-});
-
-test("greet greets by name", async () => {
-  await withServer(async (base) => {
-    const res = await fetch(`${base}/greet?name=Zakk`);
-    assert.equal(res.status, 200);
-    assert.match(await res.text(), /Hello, Zakk!/);
-  });
-});
-"#;
-
-/// A red test a scenario can overlay: expects GET /version, which the base app does not serve.
+/// A red test a scenario can overlay onto a Node stack: expects GET /version, which the base app does
+/// not serve.
 pub const VERSION_TEST_JS: &str = r#"const test = require("node:test");
 const assert = require("node:assert/strict");
 const server = require("../server.js");
@@ -108,60 +38,26 @@ test("version endpoint reports the app version", async () => {
 });
 "#;
 
-const PACKAGE_JSON: &str = r#"{
-  "name": "lilapp",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "start": "node server.js",
-    "test": "node --test"
-  }
-}
-"#;
-
-const README_MD: &str = "# Lilapp\n\nThe app this team builds and maintains. Plain Node, zero \
-dependencies.\n\n- `npm start` — serve on PORT (default 3000)\n- `npm test` — run the test suite \
-(`node --test`)\n";
-
-/// The base fixture as relative-path → file-body pairs.
-pub fn base_workspace() -> BTreeMap<String, String> {
-    let mut files = BTreeMap::new();
-    files.insert("package.json".into(), PACKAGE_JSON.into());
-    files.insert("server.js".into(), SERVER_JS.into());
-    files.insert("test/server.test.js".into(), SERVER_TEST_JS.into());
-    files.insert("README.md".into(), README_MD.into());
-    // The worker standing rules, deployed exactly as production deploys them (workers/agents.rs).
-    files.insert("AGENTS.md".into(), format!("{WORKER_AGENTS_MD}\n"));
-    files.insert("CLAUDE.md".into(), format!("{WORKER_AGENTS_MD}\n"));
-    files.insert(".gitignore".into(), "node_modules/\nlog/\n".into());
-    files
-}
-
 /// `server.js` where GET /greet 500s when no `?name=` is given (`.trim()` on null) — the bug the
 /// verify-before-done / match-owner-register scenarios report. The base suite stays green (it always
-/// passes a name), so the bug is real but only reachable the way a user hits it.
-pub fn greet_bug_overlay() -> BTreeMap<String, String> {
-    let buggy = SERVER_JS.replace(
+/// passes a name), so the bug is real but only reachable the way a user hits it. Reads the stack's
+/// pre-scaffolded `server.js` and removes the `?? "world"` default; falls back to the canonical line
+/// if the template can't be read (so callers always get a usable overlay).
+pub fn greet_bug_overlay(profile: &StackProfile) -> BTreeMap<String, String> {
+    let src = std::fs::read_to_string(profile.eval_fixture_dir().join("server.js"))
+        .unwrap_or_else(|_| GREET_DEFAULT_LINE.to_string());
+    let buggy = src.replace(
         r#"const name = url.searchParams.get("name") ?? "world";"#,
         r#"const name = url.searchParams.get("name");"#,
     );
-    debug_assert_ne!(buggy, SERVER_JS, "greet bug overlay failed to apply");
+    debug_assert!(
+        buggy.contains(r#"get("name");"#),
+        "greet bug overlay failed to apply"
+    );
     BTreeMap::from([("server.js".to_string(), buggy)])
 }
 
-/// Write the base fixture + a scenario overlay into `dir`.
-pub fn write_workspace(dir: &Path, overlay: &BTreeMap<String, String>) -> std::io::Result<()> {
-    let mut files = base_workspace();
-    files.extend(overlay.clone());
-    for (rel, body) in files {
-        let abs = dir.join(&rel);
-        if let Some(parent) = abs.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(abs, body)?;
-    }
-    Ok(())
-}
+const GREET_DEFAULT_LINE: &str = r#"const name = url.searchParams.get("name") ?? "world";"#;
 
 /// Init a fresh repo and commit the fixture — workers read `git status`/`git diff` and commit their
 /// own work, so the workspace must be a real repository.
@@ -191,65 +87,34 @@ pub fn git_commit_fixture(dir: &Path) -> std::io::Result<()> {
     git(&["commit", "-qm", "fixture: initial app state"])
 }
 
-// ---- Rails substrate ----------------------------------------------------------
-
-/// The buggy `home_controller.rb`: GET /greet without a name 500s (`nil.strip`). Mirrors the Node
-/// greet bug — the base suite stays green (it always passes a name).
-const RAILS_GREET_BUG: &str = r#"class HomeController < ApplicationController
-  def index
-    render plain: "Lilapp is running\n"
-  end
-
-  def greet
-    name = params[:name]
-    render plain: "Hello, #{name.strip}!\n"
-  end
-end
-"#;
-
-/// A red minitest a scenario can overlay: expects GET /version (no such route → the test errors red).
-pub const RAILS_VERSION_TEST: &str = r#"require "test_helper"
-
-class VersionTest < ActionDispatch::IntegrationTest
-  test "version endpoint reports the app version" do
-    get "/version"
-    assert_response :success
-    assert_equal({ "version" => "0.1.0" }, JSON.parse(response.body))
-  end
-end
-"#;
-
-/// The greet-bug overlay for the Rails app (replaces the controller).
-pub fn rails_greet_bug_overlay() -> BTreeMap<String, String> {
-    BTreeMap::from([(
-        "app/controllers/home_controller.rb".to_string(),
-        RAILS_GREET_BUG.to_string(),
-    )])
-}
-
-/// Locate the pre-scaffolded Rails template (`eval/fixtures/rails-app`): relative to the CWD (the
-/// `lila-eval` binary runs from the repo root), else the crate manifest dir.
-pub fn rails_template_dir() -> PathBuf {
-    let from_cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .join("eval/fixtures/rails-app");
-    if from_cwd.exists() {
-        return from_cwd;
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("eval/fixtures/rails-app")
-}
-
-/// Seed a trial workspace with the Rails app: clone the template (APFS clone where possible), apply
-/// the scenario overlay, and commit. Errors if the template hasn't been built (`setup-rails.sh`).
-pub fn seed_rails(dir: &Path, overlay: &BTreeMap<String, String>) -> std::io::Result<()> {
-    let template = rails_template_dir();
-    if !template.join("bin/rails").exists() {
+/// Seed a trial workspace from a stack's pre-scaffolded eval fixture: clone the template (APFS clone
+/// where possible), deploy the worker standing rules assembled for that stack (`AGENTS.md`/`CLAUDE.md`,
+/// identical to what the booted binary writes), and apply the scenario overlay. The caller commits.
+/// Errors if the template hasn't been built (the stack's `eval/setup.sh`, e.g. Rails' vendored gems).
+pub fn seed_stack(
+    profile: &StackProfile,
+    dir: &Path,
+    overlay: &BTreeMap<String, String>,
+) -> std::io::Result<()> {
+    let template = profile.eval_fixture_dir();
+    if !template.exists() {
         return Err(std::io::Error::other(format!(
-            "Rails template missing at {} — run eval/fixtures/setup-rails.sh",
+            "stack '{}' eval fixture missing at {} — run its eval/setup.sh",
+            profile.name,
             template.display()
         )));
     }
     clone_tree(&template, dir)?;
+    let rules = build_worker_agents_md(&profile.worker_prompt);
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        std::fs::write(dir.join(name), &rules)?;
+    }
+    apply_overlay(dir, overlay)?;
+    Ok(())
+}
+
+/// Write each overlay file (relative path → body) into `dir`, creating parents as needed.
+fn apply_overlay(dir: &Path, overlay: &BTreeMap<String, String>) -> std::io::Result<()> {
     for (rel, body) in overlay {
         let abs = dir.join(rel);
         if let Some(parent) = abs.parent() {
@@ -279,6 +144,45 @@ fn clone_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
     if plain.success() {
         Ok(())
     } else {
-        Err(std::io::Error::other("failed to copy the Rails template"))
+        Err(std::io::Error::other(
+            "failed to copy the stack eval fixture",
+        ))
     }
+}
+
+// ---- Rails-specific planted-bug overlays (production-parity runs) -------------
+
+/// The buggy `home_controller.rb`: GET /greet without a name 500s (`nil.strip`). Mirrors the Node
+/// greet bug — the base suite stays green (it always passes a name).
+const RAILS_GREET_BUG: &str = r#"class HomeController < ApplicationController
+  def index
+    render plain: "Lilapp is running\n"
+  end
+
+  def greet
+    name = params[:name]
+    render plain: "Hello, #{name.strip}!\n"
+  end
+end
+"#;
+
+/// A red minitest a scenario can overlay onto the Rails stack: expects GET /version (no such route →
+/// the test errors red).
+pub const RAILS_VERSION_TEST: &str = r#"require "test_helper"
+
+class VersionTest < ActionDispatch::IntegrationTest
+  test "version endpoint reports the app version" do
+    get "/version"
+    assert_response :success
+    assert_equal({ "version" => "0.1.0" }, JSON.parse(response.body))
+  end
+end
+"#;
+
+/// The greet-bug overlay for the Rails app (replaces the controller).
+pub fn rails_greet_bug_overlay() -> BTreeMap<String, String> {
+    BTreeMap::from([(
+        "app/controllers/home_controller.rb".to_string(),
+        RAILS_GREET_BUG.to_string(),
+    )])
 }

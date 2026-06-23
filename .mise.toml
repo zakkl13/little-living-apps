@@ -1,5 +1,7 @@
 # Toolchain pins for the host (mise installs these — one static binary, no daemon).
-# Ruby for the app the agent builds (Rails 8); Node for the manager + Codex CLI.
+# Node is framework infrastructure: it runs the manager's agent CLI and the Playwright validation
+# workers use. The APP's language toolchain is NOT pinned here — it follows the active stack
+# (stacks/<name>/stack.toml [toolchain]) and bootstrap.sh installs it globally (ruby@3.3 for the
+# default rails-pwa stack, nothing extra for node-react). Keeps the host pin stack-agnostic.
 [tools]
-ruby = "3.3"
 node = "22"

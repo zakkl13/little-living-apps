@@ -11,12 +11,12 @@ use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 
 use crate::eval::fake_telegram::FakeTelegram;
-use crate::eval::fixture::Substrate;
 use crate::eval::report::TrialReport;
 use crate::eval::scenarios::Scenario;
 use crate::eval::transcript::{Axis, EvalTranscript, TokenStats, grade, score};
 use crate::eval::{checks, fixture, trace_read};
 use crate::runtime::SnapshotStore;
+use crate::stack::StackProfile;
 
 /// The eval owner's Telegram id (any allowed id; deliveries are captured, never sent).
 const EVAL_OWNER_ID: i64 = 77_000_001;
@@ -59,7 +59,7 @@ pub async fn run_trial(
     seed_memory(&dirs.memory, scenario)?;
 
     let tg = FakeTelegram::start().await?;
-    let mut child = spawn_binary(&tg, &dirs, opts)?;
+    let mut child = spawn_binary(&tg, &dirs, opts, scenario)?;
 
     let budget = scenario.timeout_secs.max(opts.timeout_secs);
     let deadline = Instant::now() + Duration::from_secs(budget);
@@ -98,10 +98,8 @@ fn setup_dirs(keep: bool) -> anyhow::Result<TrialDirs> {
 }
 
 fn seed_workspace(ws: &Path, scenario: &Scenario) -> anyhow::Result<()> {
-    match scenario.substrate {
-        Substrate::Rails => fixture::seed_rails(ws, &scenario.workspace)?,
-        Substrate::Node => fixture::write_workspace(ws, &scenario.workspace)?,
-    }
+    let profile = StackProfile::load(&scenario.stack)?;
+    fixture::seed_stack(&profile, ws, &scenario.workspace)?;
     if let Some(setup) = scenario.setup {
         setup(ws)?;
     }
@@ -130,6 +128,7 @@ fn spawn_binary(
     tg: &FakeTelegram,
     dirs: &TrialDirs,
     opts: &HarnessOptions,
+    scenario: &Scenario,
 ) -> anyhow::Result<Child> {
     let bin = locate_lila_binary()?;
     let path = std::env::var("PATH").unwrap_or_default();
@@ -146,6 +145,7 @@ fn spawn_binary(
         .env("TELEGRAM_API_BASE_URL", tg.base_url())
         .env("AGENT_BACKEND", &opts.backend)
         .env("CODEX_SANDBOX_MODE", &opts.sandbox)
+        .env("LILA_STACK", &scenario.stack)
         .env("WORKSPACE_DIR", &dirs.workspace)
         .env("MEMORY_DIR", &dirs.memory)
         .env("MANAGER_STATE_DIR", &dirs.state)

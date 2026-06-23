@@ -27,6 +27,7 @@ thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
 tokio-util = "0.7.18"
 tracing = "0.1.44"
+toml = { version = "1", default-features = false, features = ["parse", "serde", "std"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = { version = "1.23.3", features = ["v4"] }
 
@@ -58,3 +59,13 @@ testing = []
 strip = true
 lto = "thin"
 codegen-units = 1
+
+# Keep target/ small. Dependencies dominate target/debug/deps (~9G with full debuginfo) and we never
+# step into them, so build them with no debuginfo. Our own crate keeps line tables — enough for
+# readable backtraces (file:line) without the bulk of full DWARF. Applies to test builds too (the
+# test profile inherits dev).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

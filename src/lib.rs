@@ -19,5 +19,6 @@ pub mod logging;
 pub mod manager;
 pub mod memory;
 pub mod runtime;
+pub mod stack;
 pub mod transport;
 pub mod workers;

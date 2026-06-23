@@ -156,6 +156,9 @@ pub struct Config {
     pub workspace_dir: String,
     /// systemd unit name for the app, so a worker restarts the RIGHT app.
     pub app_service_name: String,
+    /// Active stack plugin (`stacks/<stack>/`), chosen by `LILA_STACK` (default `rails-pwa`). Decides
+    /// the *kind of app* the team builds — scaffold, serve, prompts, eval fixture all read it.
+    pub stack: String,
     pub sandbox_mode: SandboxMode,
     /// Telegram Bot API base URL (overridden in tests).
     pub telegram_api_base_url: String,
@@ -377,6 +380,7 @@ impl Config {
             app_public_url: derive_public_url(env),
             workspace_dir: paths.workspace_dir,
             app_service_name: paths.app_service_name,
+            stack: get_trimmed(env, "LILA_STACK").unwrap_or_else(|| "rails-pwa".into()),
             sandbox_mode: valid.sandbox_mode,
             telegram_api_base_url: get_trimmed(env, "TELEGRAM_API_BASE_URL")
                 .unwrap_or_else(|| "https://api.telegram.org".into())
@@ -422,6 +426,15 @@ mod tests {
         assert_eq!(cfg.allowed_user_ids, vec![42]);
         assert!(cfg.manager_model.is_none(), "codex uses SDK default model");
         assert_eq!(cfg.app_public_url, "");
+        assert_eq!(cfg.stack, "rails-pwa", "default stack is rails-pwa");
+    }
+
+    #[test]
+    fn lila_stack_overrides_the_default() {
+        let mut env = base_env();
+        env.insert("LILA_STACK".into(), "node-react".into());
+        let cfg = Config::from_env(&env).expect("loads");
+        assert_eq!(cfg.stack, "node-react");
     }
 
     #[test]

@@ -12,7 +12,8 @@ use crate::manager::codex::CodexBackend;
 use crate::manager::mcp::{self, RunningMcp};
 use crate::manager::prompt::{RuntimeFacts, build_agents_md};
 use crate::memory::MemFs;
-use crate::workers::{Orchestrator, WORKER_AGENTS_MD};
+use crate::stack::StackProfile;
+use crate::workers::{Orchestrator, build_worker_agents_md};
 
 /// Build the real backend + the running MCP server it talks to (caller keeps the handle alive).
 pub async fn build_backend(
@@ -37,12 +38,14 @@ pub async fn build_backend(
 }
 
 /// Write the manager + worker standing rules to disk; return the manager AGENTS.md body (Claude
-/// needs it as its system prompt).
+/// needs it as its system prompt). Both prompts splice in the active stack's fragments.
 fn seed_agents_md(cfg: &Config) -> anyhow::Result<String> {
+    let profile = StackProfile::load(&cfg.stack)?;
     let runtime = RuntimeFacts {
         app_public_url: cfg.app_public_url.clone(),
         workspace_dir: cfg.workspace_dir.clone(),
         app_service_name: cfg.app_service_name.clone(),
+        stack_app: profile.manager_prompt.clone(),
     };
     let agents_md = build_agents_md(&runtime);
     std::fs::create_dir_all(&cfg.manager_dir)?;
@@ -50,17 +53,17 @@ fn seed_agents_md(cfg: &Config) -> anyhow::Result<String> {
         Path::new(&cfg.manager_dir).join("AGENTS.md"),
         format!("{agents_md}\n"),
     )?;
-    seed_worker_rules(Path::new(&cfg.workspace_dir))?;
+    seed_worker_rules(Path::new(&cfg.workspace_dir), &profile)?;
     Ok(agents_md)
 }
 
 /// Seed the worker standing rules into the workspace under BOTH filenames the worker CLIs read:
 /// Codex reads `AGENTS.md` natively, while Claude Code reads `CLAUDE.md`. Writing both keeps the
 /// worker contract (summary block, browser self-validation, scope discipline) in force regardless
-/// of the active backend — and across a `/backend` swap.
-fn seed_worker_rules(workspace_dir: &Path) -> std::io::Result<()> {
+/// of the active backend — and across a `/backend` swap. The body is assembled for the active stack.
+fn seed_worker_rules(workspace_dir: &Path, profile: &StackProfile) -> std::io::Result<()> {
     std::fs::create_dir_all(workspace_dir)?;
-    let body = format!("{WORKER_AGENTS_MD}\n");
+    let body = build_worker_agents_md(&profile.worker_prompt);
     for name in ["AGENTS.md", "CLAUDE.md"] {
         std::fs::write(workspace_dir.join(name), &body)?;
     }
@@ -74,13 +77,19 @@ mod tests {
     #[test]
     fn seeds_worker_rules_for_both_codex_and_claude() {
         let tmp = tempfile::tempdir().unwrap();
-        seed_worker_rules(tmp.path()).unwrap();
-        // Codex reads AGENTS.md; Claude Code reads CLAUDE.md — both must carry the worker contract.
+        let profile = StackProfile::load("rails-pwa").unwrap();
+        seed_worker_rules(tmp.path(), &profile).unwrap();
+        // Codex reads AGENTS.md; Claude Code reads CLAUDE.md — both must carry the worker contract
+        // assembled for the active stack.
         for name in ["AGENTS.md", "CLAUDE.md"] {
             let body = std::fs::read_to_string(tmp.path().join(name)).unwrap();
             assert!(
                 body.contains("SUMMARY FOR MANAGER"),
                 "{name} missing the worker contract"
+            );
+            assert!(
+                body.contains("this app is a Rails 8 app"),
+                "{name} missing the rails-pwa stack conventions"
             );
         }
     }

@@ -1,12 +1,19 @@
 //! The single source of truth for a worker's standing instructions.
+//!
 //! Deployed verbatim as the workspace `AGENTS.md`, which the worker's CLI reads natively each
-//! session. The summary-block marker here is kept identical to [`super::protocol`]'s via a test.
+//! session. The body is assembled at deploy time from the framework-generic frame here plus the
+//! active stack's "## Runtime conventions" fragment ([`crate::stack::StackProfile::worker_prompt`]),
+//! so the *kind of app* the team builds is a swappable plugin while the role/reporting/validation
+//! rules stay constant. The summary-block marker is kept identical to [`super::protocol`]'s via a
+//! test that checks the ASSEMBLED body.
 //!
 //! Shell `${VAR}` references are intentionally literal — the worker expands them against its own
 //! per-instance environment.
 
-/// The workspace `AGENTS.md` body seeded for workers.
-pub const WORKER_AGENTS_MD: &str = r####"# AGENTS.md — standing rules for workers
+/// The framework-generic frame that opens the worker `AGENTS.md`: role, reporting contract, and the
+/// stack-agnostic runtime environment. The active stack's "## Runtime conventions" fragment is
+/// appended after this, then [`WORKER_AGENTS_SUFFIX`].
+const WORKER_AGENTS_PREFIX: &str = r####"# AGENTS.md — standing rules for workers
 
 ## Your role
 You are a **worker**: a session driven by a **manager** that talks to the owner. You do the concrete
@@ -35,20 +42,11 @@ back from you is the summary block described here — so everything it needs mus
   instance `lila-app@<instance>`. You only ever touch **your** app: reach it at
   `http://localhost:${APP_PORT:-3000}` and restart it with **your** unit
   `${LILA_APP_SERVICE:-lila-app@primary}`. Never hardcode `3000` or a literal unit name.
-- **Long-running processes are managed by `systemd`**, not a TTY. Install a unit so they survive.
+- **Long-running processes are managed by `systemd`**, not a TTY. Install a unit so they survive."####;
 
-## Runtime conventions (this app is a Rails 8 app)
-- The app is a **Rails 8** project (SQLite + the Solid stack, Hotwire/Turbo, structured as a PWA).
-  Build with the grain of Rails 8 defaults — reach for built-ins before adding gems.
-- **Reload mode:** edits to existing code go live on the **next request** — no restart. Structural
-  changes (a new gem, an initializer, a route, a migration) DO need a restart:
-  `sudo systemctl restart "${LILA_APP_SERVICE:-lila-app@primary}"`. Run migrations with
-  `bin/rails db:migrate`.
-- **Auth:** use Rails' built-in authentication (`bin/rails generate authentication`).
-- **Reserved path:** `/_agent/*` is reserved. Never route app paths under it.
-- If the app isn't scaffolded yet, create it with `lila-new-app` (a minimal Rails 8 + PWA app).
-
-## Validate your own work (browser self-validation)
+/// The framework-generic frame that closes the worker `AGENTS.md`: self-validation method and scope
+/// discipline. Appended after the stack's "## Runtime conventions" fragment.
+const WORKER_AGENTS_SUFFIX: &str = r####"## Validate your own work (browser self-validation)
 **Every objective ends with you proving your own work** — your summary's claims must be backed by
 what you actually saw. Playwright + headless Chromium are pre-installed host-wide and `NODE_PATH` is
 set, so `require("playwright")` resolves anywhere — no `npm install`. The app binds locally to
@@ -71,17 +69,41 @@ Validate work with nothing visual (a migration, a job, an API) with tests or rea
 ## Scope discipline (parallel-safe coordination)
 The manager assigns each worker an explicit, **non-overlapping file scope**. Edit only files inside
 your scope (reads anywhere are fine). Commit small units. If the objective seems to require touching
-files outside your scope, **stop and report back** rather than straying.
-"####;
+files outside your scope, **stop and report back** rather than straying."####;
+
+/// Assemble the workspace `AGENTS.md` body for the active stack: the generic frame wrapped around the
+/// stack's "## Runtime conventions" fragment. `stack_worker_prompt` is
+/// [`crate::stack::StackProfile::worker_prompt`].
+pub fn build_worker_agents_md(stack_worker_prompt: &str) -> String {
+    format!("{WORKER_AGENTS_PREFIX}\n\n{stack_worker_prompt}\n\n{WORKER_AGENTS_SUFFIX}\n")
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stack::StackProfile;
     use crate::workers::protocol::MANAGER_SUMMARY_MARKER;
 
     #[test]
-    fn agents_md_uses_the_summary_marker() {
-        // The writer (this file) and reader (protocol.rs) must agree on the marker.
-        assert!(WORKER_AGENTS_MD.contains(MANAGER_SUMMARY_MARKER));
+    fn assembled_agents_md_uses_the_summary_marker() {
+        // The writer (this file) and reader (protocol.rs) must agree on the marker — checked on the
+        // ASSEMBLED body, since the frame is no longer a single const.
+        let profile = StackProfile::load("rails-pwa").expect("rails-pwa loads");
+        let body = build_worker_agents_md(&profile.worker_prompt);
+        assert!(body.contains(MANAGER_SUMMARY_MARKER));
+    }
+
+    #[test]
+    fn assembled_agents_md_splices_the_stack_fragment() {
+        let rails = build_worker_agents_md(&StackProfile::load("rails-pwa").unwrap().worker_prompt);
+        assert!(rails.contains("this app is a Rails 8 app"));
+        assert!(rails.contains("Scope discipline"), "suffix frame present");
+
+        let node = build_worker_agents_md(&StackProfile::load("node-react").unwrap().worker_prompt);
+        assert!(node.contains("this app is a Node + React app"));
+        assert!(
+            !node.contains("Rails 8"),
+            "node stack carries no Rails prose"
+        );
     }
 }

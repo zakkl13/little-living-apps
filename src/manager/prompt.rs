@@ -101,6 +101,9 @@ pub struct RuntimeFacts {
     pub app_public_url: String,
     pub workspace_dir: String,
     pub app_service_name: String,
+    /// The active stack's "the app" fragment ([`crate::stack::StackProfile::manager_prompt`]); its
+    /// `{workspace}`/`{service}` placeholders are filled from the facts above.
+    pub stack_app: String,
 }
 
 fn render_runtime(r: &RuntimeFacts) -> String {
@@ -109,23 +112,21 @@ fn render_runtime(r: &RuntimeFacts) -> String {
     } else {
         &r.app_public_url
     };
+    // The framework keeps the generic VM/Caddy/long-poll framing; the stack supplies only the "the
+    // app" bullets (what kind of app, how it reloads), with the runtime facts spliced in.
+    let stack_app = r
+        .stack_app
+        .replace("{workspace}", &r.workspace_dir)
+        .replace("{service}", &r.app_service_name);
     format!(
         "## Your runtime environment\n\
          You and your team run on a Linux VM you fully control — a disposable host that IS the\n\
          security boundary. Your workers run directly on the box and operate it on your instruction;\n\
          you have no hands of your own.\n\
-         - The app: a single **Rails 8** app (SQLite + Hotwire, structured as a PWA) the team builds\n\
-           and maintains, living at {workspace}. If it isn't scaffolded yet, a worker runs\n\
-           `lila-new-app` to create a minimal Rails 8 + PWA app to build on.\n\
-         - Reload mode: a worker's edits to existing code go live on the NEXT request — no restart.\n\
-           Only structural changes (a new gem, an initializer, a route, a migration) need\n\
-           `sudo systemctl restart {service}`, which a worker can run.\n\
+         {stack_app}\n\
          - Public URL: {url}\n\
          - The box is always on. There is no inbound port for the bot — you reach the user over\n\
            Telegram by outbound long-poll.",
-        workspace = r.workspace_dir,
-        service = r.app_service_name,
-        url = url,
     )
 }
 

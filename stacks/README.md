@@ -1,0 +1,94 @@
+# Stacks — the *kind of app* the team builds is a plugin
+
+A **stack** decides what kind of app little-living-apps scaffolds, serves, and maintains: Rails 8 +
+PWA by default, a zero-build Node + React PWA alongside it, or anything you add. A stack is **data,
+not code** — a directory under `stacks/`, read by the generic framework. Adding one needs **no Rust
+changes and no recompile**.
+
+Pick the active stack per instance with `LILA_STACK` (default `rails-pwa`), set in `.env` /
+`/etc/lila/<instance>.env`. The same value drives six things from one source of truth: the scaffold,
+the systemd serve unit, the app toolchain, the manager prompt, the worker prompt, and the eval
+fixture.
+
+## Layout
+
+```
+stacks/
+  <name>/
+    stack.toml        # the contract (below)
+    scaffold.sh       # creates the app at instance stand-up (runtime, via bin/new-app)
+    worker.md         # the "## Runtime conventions" fragment spliced into the worker AGENTS.md
+    manager.md        # the "the app" fragment spliced into the manager's runtime-environment section
+    eval/
+      fixture/        # a pre-scaffolded copy of the app, cloned per eval trial (APFS clone)
+      setup.sh        # optional one-time build of the fixture (e.g. vendoring deps) — see rails-pwa
+```
+
+## The contract — `stack.toml`
+
+```toml
+name    = "rails-pwa"          # must match the directory name
+display = "Rails 8 + PWA"      # human-readable label
+
+# App-language toolchain pins, merged into bootstrap's `mise use -g …`. Node is ALWAYS installed by
+# the framework (it runs the agent CLI + Playwright validation), so list only what the app adds.
+# Omit the section entirely for a Node-only stack.
+[toolchain]
+ruby = "3.3"
+
+# The scaffold script, run at instance creation by the (generic) bin/new-app as the service user, in
+# the app dir, with LILA_INSTANCE / APP_DIR / APP_PORT / LILA_DOMAIN / SKIP_AUTH / SERVICE_USER / MISE
+# in the environment. Full bash: conditionals, post-tweaks, idempotency guards.
+[scaffold]
+script = "scaffold.sh"
+
+# How to start the app. Portable command: it binds localhost and reads ${APP_PORT} from the
+# environment. bin/new-app wraps it with the mise wrapper for the systemd ExecStart; the eval probe
+# runs it directly. `env` becomes systemd `Environment=` lines (and is exported by the eval probe).
+[serve]
+exec = "bin/rails server -b 127.0.0.1 -p ${APP_PORT}"
+env  = { RAILS_ENV = "development" }
+
+# Validation contract: the app's own test command, a route it serves once booted (the eval probe
+# waits on it before probing), and an optional failure-tolerant pre-boot step the eval probe runs.
+[validate]
+test_cmd    = "bin/rails test"
+health_path = "/up"
+prepare     = "bin/rails db:prepare"   # optional; omit if the app needs no preparation to boot
+
+# Prose fragments spliced verbatim into the agent prompts — the only stack-specific text.
+[prompt]
+worker  = "worker.md"
+manager = "manager.md"
+```
+
+`node-react/stack.toml` is the same shape with no `[toolchain]`, `exec = "node server.js"`,
+`test_cmd = "node --test"`, `health_path = "/"`, and no `prepare`.
+
+## The prompt fragments
+
+- **`worker.md`** is the `## Runtime conventions (this app is a …)` section. The framework wraps it
+  with the constant role / reporting / browser-self-validation / scope rules to form the workspace
+  `AGENTS.md` (and `CLAUDE.md`). Keep `${LILA_APP_SERVICE:-lila-app@primary}` and
+  `${APP_PORT:-3000}` literal — the worker expands them against its own per-instance environment.
+- **`manager.md`** is the "the app" bullets in the manager's runtime-environment section (what kind of
+  app it is, how it reloads). Use the placeholders `{workspace}` and `{service}`; the framework fills
+  them from the live runtime facts.
+
+## Eval fixture
+
+Each stack ships `eval/fixture/` — a committed, pre-scaffolded copy of the app the eval suite operates
+on. The harness clones it per trial, writes the assembled worker rules, applies the scenario's
+planted-bug overlay, and grades the real end state with the profile-driven graders (`test_cmd`,
+`serve.exec` + `health_path`). If the fixture needs a one-time build (Rails vendors its gems into
+`vendor/bundle`), put it in `eval/setup.sh` and run it once before the eval. The planted realities are
+proven by `cargo test` (`tests/eval_graders.rs`, `tests/eval_rails.rs`).
+
+## Add a stack in four steps
+
+1. `mkdir stacks/<name>` and write `stack.toml`, `scaffold.sh`, `worker.md`, `manager.md`.
+2. Add `eval/fixture/` (a minimal working app) so the suite can run on it — and `eval/setup.sh` if it
+   needs a one-time build.
+3. Smoke-test the contract: `lila stack <name>` should print the `LILA_STACK_*` assignments without
+   error, and `cargo test` (the stack-loader unit tests parse every in-repo stack).
+4. Run it: set `LILA_STACK=<name>` and `bootstrap.sh` / `bin/new-instance`. No Rust edits, no rebuild.

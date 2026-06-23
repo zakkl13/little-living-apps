@@ -5,12 +5,12 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::{Duration, Instant};
 
 use regex::Regex;
 
 use crate::eval::transcript::{Check, CheckOutcome, EvalTranscript, TimelineEntry};
 use crate::manager::driver::apply_no_reply;
+use crate::stack::StackProfile;
 
 fn clip(s: &str, n: usize) -> String {
     if s.chars().count() > n {
@@ -355,105 +355,57 @@ fn grep_dir(root: &Path, dir: &Path, needle: &Regex) -> Option<String> {
     None
 }
 
-/// The app's own test suite is green in the final workspace (`node --test`).
-pub fn tests_green(name: &str) -> Check {
+// ---- functional graders (profile-driven: any stack, one code path) -------------
+
+/// The app's own test suite is green in the final workspace, run via the active stack's `test_cmd`
+/// (`bin/rails test`, `node --test`, …).
+pub fn tests_green(profile: &StackProfile, name: &str) -> Check {
+    let cmd = profile.test_cmd.clone();
     let name = name.to_string();
-    Check::new(name, move |t| {
-        match run_node(&["--test"], &t.workspace_dir, 60) {
-            Ok(()) => CheckOutcome::pass(),
-            Err(detail) => CheckOutcome::fail(detail),
-        }
-    })
+    Check::new(name, move |t| run_shell(&cmd, &t.workspace_dir))
 }
 
-/// Boot `server.js` and assert a GET on `path` returns `status`.
-pub fn http_probe(path: &str, status: u16, name: &str) -> Check {
-    let script = http_probe_script(path, status);
+/// Boot the app via the stack's `serve_exec` and assert a GET on `path` returns `status`. Picks a
+/// free port, runs the stack's optional `prepare` step, boots the server, waits for its `health_path`
+/// to answer 200, probes the target path, then stops the server.
+pub fn http_probe(profile: &StackProfile, path: &str, status: u16, name: &str) -> Check {
+    let script = serve_probe_script(profile, path, status);
     let name = name.to_string();
-    Check::new(name, move |t| {
-        match run_node(&["-e", &script], &t.workspace_dir, 15) {
-            Ok(()) => CheckOutcome::pass(),
-            Err(detail) => CheckOutcome::fail(detail),
-        }
-    })
+    Check::new(name, move |t| run_shell(&script, &t.workspace_dir))
 }
 
-fn http_probe_script(path: &str, status: u16) -> String {
-    format!(
-        r#"const server = require("./server.js");
-server.listen(0, async () => {{
-  try {{
-    const res = await fetch("http://127.0.0.1:" + server.address().port + {path:?});
-    const text = await res.text();
-    if (res.status !== {status}) {{ console.error("status " + res.status + ": " + text.slice(0,200)); process.exit(1); }}
-    process.exit(0);
-  }} catch (err) {{ console.error(err.message); process.exit(1); }}
-}});
-setTimeout(() => {{ console.error("probe timeout"); process.exit(1); }}, 8000);"#
-    )
-}
-
-/// Run `node <args>` in `cwd`, killing it after `timeout_secs`. Ok(()) on exit 0; Err(detail) else.
-fn run_node(args: &[&str], cwd: &Path, timeout_secs: u64) -> Result<(), String> {
-    let mut child = Command::new("node")
-        .args(args)
-        .current_dir(cwd)
-        .env("NODE_OPTIONS", "")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn node: {e} (is node installed?)"))?;
-    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(_)) => return Err(node_failure(child)),
-            Ok(None) if Instant::now() >= deadline => {
-                let _ = child.kill();
-                return Err(format!("node timed out after {timeout_secs}s"));
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
-            Err(e) => return Err(format!("wait node: {e}")),
-        }
-    }
-}
-
-// ---- Rails substrate graders --------------------------------------------------
-
-/// The Rails app's own test suite is green (`bin/rails test`).
-pub fn rails_tests_green(name: &str) -> Check {
-    let name = name.to_string();
-    Check::new(name, move |t| run_shell("bin/rails test", &t.workspace_dir))
-}
-
-/// Boot the Rails app and assert a GET on `path` returns `status`. Picks a free port, boots puma,
-/// waits for the built-in `/up` health route, probes, and stops the server.
-pub fn rails_http_probe(path: &str, status: u16, name: &str) -> Check {
-    let path = path.to_string();
-    let name = name.to_string();
-    Check::new(name, move |t| {
-        run_shell(&rails_probe_script(&path, status), &t.workspace_dir)
-    })
-}
-
-fn rails_probe_script(path: &str, status: u16) -> String {
+/// Render the boot-poll-probe-kill shell script from a stack profile. `serve_exec` binds localhost
+/// and reads `${APP_PORT}`/`$PORT` (both exported); `serve_env` becomes `export` lines; `prepare` (if
+/// any) runs failure-tolerantly first; `health_path` gates readiness.
+fn serve_probe_script(profile: &StackProfile, path: &str, status: u16) -> String {
     let port = free_port();
+    let mut env_exports = String::new();
+    for (k, v) in &profile.serve_env {
+        env_exports.push_str(&format!("export {k}={v}\n"));
+    }
+    let prepare = if profile.probe_prepare.is_empty() {
+        String::new()
+    } else {
+        format!("{} >/dev/null 2>&1 || true\n", profile.probe_prepare)
+    };
+    let serve = &profile.serve_exec;
+    let health = &profile.health_path;
     format!(
         r#"set -e
-export RAILS_ENV=development
-bin/rails db:prepare >/dev/null 2>&1 || true
-bin/rails server -p {port} -b 127.0.0.1 >log/eval-probe.log 2>&1 &
+{env_exports}export APP_PORT={port}
+export PORT={port}
+{prepare}{serve} >/tmp/lila-eval-serve.$$.log 2>&1 &
 PID=$!
 ok=0
 for i in $(seq 1 40); do
-  c=$(curl -s -o /dev/null -w '%{{http_code}}' "http://127.0.0.1:{port}/up" 2>/dev/null || true)
+  c=$(curl -s -o /dev/null -w '%{{http_code}}' "http://127.0.0.1:{port}{health}" 2>/dev/null || true)
   [ "$c" = "200" ] && {{ ok=1; break; }}
   sleep 0.5
 done
 code=$(curl -s -o /dev/null -w '%{{http_code}}' "http://127.0.0.1:{port}{path}" 2>/dev/null || true)
 kill $PID 2>/dev/null || true
 wait $PID 2>/dev/null || true
-[ "$ok" = 1 ] || {{ echo "rails server did not boot"; exit 2; }}
+[ "$ok" = 1 ] || {{ echo "app did not boot (see /tmp/lila-eval-serve.$$.log)"; exit 2; }}
 [ "$code" = "{status}" ] || {{ echo "GET {path} -> $code (wanted {status})"; exit 1; }}"#
     )
 }
@@ -466,9 +418,10 @@ fn free_port() -> u16 {
         .map_or(39_517, |a| a.port())
 }
 
-/// Run a shell script in `cwd` (inherits the process env, so PATH must carry Ruby for Rails). Ok(())
-/// on exit 0; Err(clipped combined output) otherwise. Scripts here are self-bounding (the probe polls
-/// then kills the server; `bin/rails test` terminates), so no external timeout is needed.
+/// Run a shell script in `cwd` (inherits the process env, so PATH must carry the stack's toolchain —
+/// Ruby for Rails, Node for node-react). Ok(()) on exit 0; Err(clipped combined output) otherwise.
+/// Scripts here are self-bounding (the probe polls then kills the server; `*test` commands
+/// terminate), so no external timeout is needed.
 fn run_shell(script: &str, cwd: &Path) -> CheckOutcome {
     let result = Command::new("bash")
         .arg("-c")
@@ -487,20 +440,4 @@ fn run_shell(script: &str, cwd: &Path) -> CheckOutcome {
         }
         Err(e) => CheckOutcome::fail(format!("spawn bash: {e}")),
     }
-}
-
-/// Collect a failed node run's output into a clipped one-line detail.
-fn node_failure(child: std::process::Child) -> String {
-    let out = child.wait_with_output().map(|o| {
-        let mut s = String::from_utf8_lossy(&o.stdout).into_owned();
-        s.push_str(&String::from_utf8_lossy(&o.stderr));
-        s
-    });
-    clip(
-        &out.unwrap_or_default()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" "),
-        220,
-    )
 }
