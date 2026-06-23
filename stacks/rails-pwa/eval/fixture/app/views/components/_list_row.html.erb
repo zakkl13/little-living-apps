@@ -1,0 +1,8 @@
+<%#
+  A single row in a .list. Usage (wrap rows in <div class="list"> … </div>):
+    <%= render "components/list_row", title: book.title, meta: book.finished_on %>
+%>
+<div class="list-row">
+  <span class="title"><%= title %></span>
+  <% if local_assigns[:meta] %><span class="meta"><%= meta %></span><% end %>
+</div>

@@ -71,11 +71,44 @@ The manager assigns each worker an explicit, **non-overlapping file scope**. Edi
 your scope (reads anywhere are fine). Commit small units. If the objective seems to require touching
 files outside your scope, **stop and report back** rather than straying."####;
 
+/// The v0 design self-validation rubric, appended to [`WORKER_AGENTS_SUFFIX`] only when the active
+/// stack opts into the design system. Self-graded (cheap, lenient) — the authoritative aesthetic
+/// verdict is the independent `looks_designed` eval grader. Per the repo's evidence-not-claims bar,
+/// "looks great" proves nothing: the check must emit CONCRETE signals.
+const WORKER_DESIGN_RUBRIC: &str = r####"## Also validate the design (this app has a locked look)
+This app ships a **locked design system** (`design.lock`; the brand's full spec is at `.lila/DESIGN.md`)
+rendered into tokens + a component layer. When your change is user-visible, your self-validation must
+also show it stayed *within* the system — with concrete evidence, never a bare "looks good":
+
+1. **Tokens, not raw values.** Prove your CSS/ERB references the tokens, not hardcoded colors/spacing:
+   `! grep -REn "#[0-9a-fA-F]{3,6}" app/views app/assets/stylesheets/*.css` should find nothing new
+   you added outside `tokens.css` (report the grep result).
+2. **No §9 anti-patterns.** Read the "Do's and Don'ts" section of `.lila/DESIGN.md` and confirm your UI
+   commits none of *that brand's* listed forbidden patterns/words.
+3. **Real states + a11y floor.** Real empty/loading/error states (use the `components/empty_state`
+   partial), an SVG icon set (never emoji as icons), the type scale respected, and AA contrast on text.
+4. Say in your summary which system is locked and that the screenshot adheres to it — backed by the
+   grep result above and what you actually see in the image, not an adjective."####;
+
 /// Assemble the workspace `AGENTS.md` body for the active stack: the generic frame wrapped around the
-/// stack's "## Runtime conventions" fragment. `stack_worker_prompt` is
-/// [`crate::stack::StackProfile::worker_prompt`].
-pub fn build_worker_agents_md(stack_worker_prompt: &str) -> String {
-    format!("{WORKER_AGENTS_PREFIX}\n\n{stack_worker_prompt}\n\n{WORKER_AGENTS_SUFFIX}\n")
+/// stack's "## Runtime conventions" fragment. When the stack opts into the design system
+/// ([`crate::stack::StackProfile::design`] is `Some`), the stack's `apply` fragment is spliced after
+/// the runtime conventions and the design self-validation rubric (§G v0) is appended; when it's `None`,
+/// neither appears (graceful opt-out, exactly like a stack that omits `[validate].prepare`).
+pub fn build_worker_agents_md(profile: &crate::stack::StackProfile) -> String {
+    let mut body = format!("{WORKER_AGENTS_PREFIX}\n\n{}", profile.worker_prompt);
+    if let Some(design) = &profile.design {
+        body.push_str("\n\n");
+        body.push_str(&design.apply_prompt);
+    }
+    body.push_str("\n\n");
+    body.push_str(WORKER_AGENTS_SUFFIX);
+    if profile.design.is_some() {
+        body.push_str("\n\n");
+        body.push_str(WORKER_DESIGN_RUBRIC);
+    }
+    body.push('\n');
+    body
 }
 
 #[cfg(test)]
@@ -89,21 +122,41 @@ mod tests {
         // The writer (this file) and reader (protocol.rs) must agree on the marker — checked on the
         // ASSEMBLED body, since the frame is no longer a single const.
         let profile = StackProfile::load("rails-pwa").expect("rails-pwa loads");
-        let body = build_worker_agents_md(&profile.worker_prompt);
+        let body = build_worker_agents_md(&profile);
         assert!(body.contains(MANAGER_SUMMARY_MARKER));
     }
 
     #[test]
     fn assembled_agents_md_splices_the_stack_fragment() {
-        let rails = build_worker_agents_md(&StackProfile::load("rails-pwa").unwrap().worker_prompt);
+        let rails = build_worker_agents_md(&StackProfile::load("rails-pwa").unwrap());
         assert!(rails.contains("this app is a Rails 8 app"));
         assert!(rails.contains("Scope discipline"), "suffix frame present");
 
-        let node = build_worker_agents_md(&StackProfile::load("node-react").unwrap().worker_prompt);
+        let node = build_worker_agents_md(&StackProfile::load("node-react").unwrap());
         assert!(node.contains("this app is a Node + React app"));
         assert!(
             !node.contains("Rails 8"),
             "node stack carries no Rails prose"
         );
+    }
+
+    #[test]
+    fn design_splice_only_when_the_stack_opts_in() {
+        // rails-pwa opts in: its apply fragment + the design rubric appear.
+        let rails = build_worker_agents_md(&StackProfile::load("rails-pwa").unwrap());
+        assert!(
+            rails.contains("Applying the design system"),
+            "apply fragment spliced"
+        );
+        assert!(
+            rails.contains("locked design system"),
+            "design rubric appended"
+        );
+        assert!(rails.contains(".lila/DESIGN.md"));
+
+        // node-react has no [design] block: neither appears (graceful opt-out).
+        let node = build_worker_agents_md(&StackProfile::load("node-react").unwrap());
+        assert!(!node.contains("Applying the design system"));
+        assert!(!node.contains("Also validate the design"));
     }
 }

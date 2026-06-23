@@ -63,7 +63,7 @@ fn seed_agents_md(cfg: &Config) -> anyhow::Result<String> {
 /// of the active backend — and across a `/backend` swap. The body is assembled for the active stack.
 fn seed_worker_rules(workspace_dir: &Path, profile: &StackProfile) -> std::io::Result<()> {
     std::fs::create_dir_all(workspace_dir)?;
-    let body = build_worker_agents_md(&profile.worker_prompt);
+    let body = build_worker_agents_md(profile);
     for name in ["AGENTS.md", "CLAUDE.md"] {
         std::fs::write(workspace_dir.join(name), &body)?;
     }

@@ -8,6 +8,7 @@ use std::process::Command;
 
 use regex::Regex;
 
+use crate::design::{self, DesignLock, Pool};
 use crate::eval::transcript::{Check, CheckOutcome, EvalTranscript, TimelineEntry};
 use crate::manager::driver::apply_no_reply;
 use crate::stack::StackProfile;
@@ -408,6 +409,170 @@ wait $PID 2>/dev/null || true
 [ "$ok" = 1 ] || {{ echo "app did not boot (see /tmp/lila-eval-serve.$$.log)"; exit 2; }}
 [ "$code" = "{status}" ] || {{ echo "GET {path} -> $code (wanted {status})"; exit 1; }}"#
     )
+}
+
+// ---- the aesthetic axis (looks_designed) -------------------------------------------------------
+//
+// The §G v1 grader, a sibling of `http_probe` / `tests_green` over the SAME captured workspace. Taste
+// has no oracle, so the LLM-judged half rides the scenario `rubric` (scored separately, never gating);
+// THIS grader is the falsifiable, offline, reproducible floor: the app faithfully applied its *locked*
+// system rather than sprinkling slop. Per the repo's evidence-not-claims bar it asserts concrete
+// signals — tokens defined + referenced, the lock present, no raw hex outside `tokens.css` — not an
+// adjective. Stacks with no `[design]` block no-op (graceful, like the non-web gate in §J).
+
+/// The app cleanly applied its locked design system: tokens rendered + referenced, `design.lock`
+/// present, and no raw hex colors sprinkled into views/stylesheets (the canonical anti-slop signal).
+pub fn looks_designed(profile: &StackProfile, name: &str) -> Check {
+    let tokens_path = profile.design.as_ref().map(|d| d.tokens_path.clone());
+    let name = name.to_string();
+    Check::new(name, move |t| match &tokens_path {
+        None => CheckOutcome::pass_with("stack opted out of the design system"),
+        Some(rel) => grade_design(&t.workspace_dir, rel),
+    })
+}
+
+fn grade_design(ws: &Path, tokens_rel: &str) -> CheckOutcome {
+    let Ok(tokens) = std::fs::read_to_string(ws.join(tokens_rel)) else {
+        return CheckOutcome::fail(format!("{tokens_rel} missing (nothing rendered)"));
+    };
+    if !tokens.contains("--color-") {
+        return CheckOutcome::fail(format!("{tokens_rel} defines no --color-* tokens"));
+    }
+    if read_design_lock(ws).is_none() {
+        return CheckOutcome::fail("no readable design.lock (look not locked)");
+    }
+    match raw_hex_in_views(ws, tokens_rel) {
+        Some(hit) => CheckOutcome::fail(format!("raw hex outside tokens — slop signal: {hit}")),
+        None => CheckOutcome::pass_with("tokens defined + locked; no raw hex in views"),
+    }
+}
+
+/// First `file: #hex` found in `app/views` or `app/assets/stylesheets` (excluding the tokens file
+/// itself), or `None` if the UI references tokens cleanly. Authored regex ⇒ `expect` is a build guard.
+#[allow(clippy::expect_used)]
+fn raw_hex_in_views(ws: &Path, tokens_rel: &str) -> Option<String> {
+    let hex = Regex::new(r"#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3}\b").expect("hex regex");
+    let skip = ws.join(tokens_rel);
+    ["app/views", "app/assets/stylesheets"]
+        .iter()
+        .find_map(|d| find_hex(&ws.join(d), &hex, &skip))
+}
+
+/// Recurse `dir` for the first file (other than `skip`) containing a raw hex color.
+fn find_hex(dir: &Path, hex: &Regex, skip: &Path) -> Option<String> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(hit) = find_hex(&path, hex, skip) {
+                return Some(hit);
+            }
+        } else if path != skip && std::fs::read_to_string(&path).is_ok_and(|b| hex.is_match(&b)) {
+            return Some(path.file_name()?.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
+// ---- design selection-flow graders (deterministic: read state, not pixels) ---------------------
+//
+// The aesthetic axis (`looks_designed`) needs an LLM judge because taste has no oracle. The selection
+// FLOW is the opposite: draw → lock → invite → choose is a state machine whose entire ground truth is
+// the committed `design.lock` plus the manager's delivered messages. So it gets cheap, exact,
+// non-flaky graders — siblings of `tests_green` / `http_probe`.
+
+/// The stable, detectable shape of the one-time look invitation (§F.3): an offer that names the look
+/// and invites the owner to pick or change it. Counted by [`invitation_count`]; matched
+/// case-insensitively (via [`re`]).
+pub const DESIGN_INVITATION: &str = r"(look|design|theme|style|vibe|aesthetic)[^.?!]{0,90}(want|fancy|prefer|pick|choose|change|swap|more personality|something (?:like|bolder|warmer|different))";
+
+/// Read + parse the workspace `design.lock`, if present and well-formed.
+fn read_design_lock(ws: &Path) -> Option<DesignLock> {
+    DesignLock::parse(&std::fs::read_to_string(ws.join("design.lock")).ok()?).ok()
+}
+
+/// The active system's pool is `expected` AND its brand really belongs to that pool per the catalog
+/// INDEX (nesting applies). Confirms the blind draw can only land in the bounded pool.
+pub fn design_lock_pool(expected: &str) -> Check {
+    let expected = expected.to_string();
+    Check::new(
+        format!("design.lock pool == {expected}"),
+        move |t| match check_pool(&t.workspace_dir, &expected) {
+            Ok(detail) => CheckOutcome::pass_with(detail),
+            Err(e) => CheckOutcome::fail(e),
+        },
+    )
+}
+
+fn check_pool(ws: &Path, expected: &str) -> Result<String, String> {
+    let lock = read_design_lock(ws).ok_or_else(|| "no readable design.lock".to_string())?;
+    let want = Pool::parse(expected).ok_or_else(|| format!("bad expected pool {expected:?}"))?;
+    if lock.pool != want {
+        return Err(format!(
+            "pool is {} (wanted {expected})",
+            lock.pool.as_str()
+        ));
+    }
+    if brand_in_pool(&lock.brand, want)? {
+        Ok(format!("{} ∈ {expected}", lock.brand))
+    } else {
+        Err(format!("{} is not a member of {expected}", lock.brand))
+    }
+}
+
+/// Is `brand` a member of the queried pool (with nesting) per `design/systems/INDEX.md`?
+fn brand_in_pool(brand: &str, want: Pool) -> Result<bool, String> {
+    let dir = design::catalog_dir();
+    let entries = design::load_index(&dir).map_err(|e| e.to_string())?;
+    Ok(entries
+        .iter()
+        .find(|e| e.brand == brand)
+        .is_some_and(|e| want.admits(e.pool)))
+}
+
+/// The `source` field of `design.lock` (the selection-flow state) equals `expected`
+/// (`default` | `invited` | `chosen` | `pinned`).
+pub fn design_source_is(expected: &str) -> Check {
+    let expected = expected.to_string();
+    Check::new(
+        format!("design.lock source == {expected}"),
+        move |t| match read_design_lock(&t.workspace_dir) {
+            Some(lock) if lock.source == expected => CheckOutcome::pass_with(lock.source),
+            Some(lock) => {
+                CheckOutcome::fail(format!("source is {} (wanted {expected})", lock.source))
+            }
+            None => CheckOutcome::fail("no readable design.lock"),
+        },
+    )
+}
+
+/// The lock did not drift during the run: `design.lock` is byte-identical to its committed baseline
+/// (no per-render switching, no reroll on restart). Uses `git diff` against the standup commit.
+pub fn design_lock_stable() -> Check {
+    Check::new("design.lock unchanged (no reroll/drift)", |t| {
+        let out = Command::new("git")
+            .args(["diff", "--quiet", "--", "design.lock"])
+            .current_dir(&t.workspace_dir)
+            .status();
+        match out {
+            Ok(s) if s.success() => CheckOutcome::pass_with("design.lock unchanged"),
+            Ok(_) => CheckOutcome::fail("design.lock changed since standup (drift/reroll)"),
+            Err(e) => CheckOutcome::fail(format!("git diff: {e}")),
+        }
+    })
+}
+
+/// The number of look-offers in the owner-visible messages equals `n` — the invitation fires *at most
+/// once* and never nags (§F.3).
+pub fn invitation_count(n: usize) -> Check {
+    let needle = re(DESIGN_INVITATION);
+    Check::new(format!("exactly {n} design invitation(s)"), move |t| {
+        let got = t.deliveries.iter().filter(|d| needle.is_match(d)).count();
+        if got == n {
+            CheckOutcome::pass_with(format!("{got} offer(s)"))
+        } else {
+            CheckOutcome::fail(format!("{got} offer(s), wanted {n}"))
+        }
+    })
 }
 
 /// A free localhost TCP port (bind :0, read it, release) so concurrent leftovers can't collide.

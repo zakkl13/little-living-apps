@@ -159,6 +159,11 @@ pub struct Config {
     /// Active stack plugin (`stacks/<stack>/`), chosen by `LILA_STACK` (default `rails-pwa`). Decides
     /// the *kind of app* the team builds — scaffold, serve, prompts, eval fixture all read it.
     pub stack: String,
+    /// Active design choice for this instance, chosen by `LILA_DESIGN` (default `random`). One of
+    /// `random` (blind draw from the safe default pool), `random:<seed>` (reproducible), or a
+    /// `<brand>` pin (the escape hatch, reaching any pool). Resolved against the vendored catalog at
+    /// scaffold time; see [`crate::design`].
+    pub design: String,
     pub sandbox_mode: SandboxMode,
     /// Telegram Bot API base URL (overridden in tests).
     pub telegram_api_base_url: String,
@@ -381,6 +386,7 @@ impl Config {
             workspace_dir: paths.workspace_dir,
             app_service_name: paths.app_service_name,
             stack: get_trimmed(env, "LILA_STACK").unwrap_or_else(|| "rails-pwa".into()),
+            design: get_trimmed(env, "LILA_DESIGN").unwrap_or_else(|| "random".into()),
             sandbox_mode: valid.sandbox_mode,
             telegram_api_base_url: get_trimmed(env, "TELEGRAM_API_BASE_URL")
                 .unwrap_or_else(|| "https://api.telegram.org".into())
@@ -427,6 +433,15 @@ mod tests {
         assert!(cfg.manager_model.is_none(), "codex uses SDK default model");
         assert_eq!(cfg.app_public_url, "");
         assert_eq!(cfg.stack, "rails-pwa", "default stack is rails-pwa");
+        assert_eq!(cfg.design, "random", "default design is a safe blind draw");
+    }
+
+    #[test]
+    fn lila_design_overrides_the_default() {
+        let mut env = base_env();
+        env.insert("LILA_DESIGN".into(), "stripe".into());
+        let cfg = Config::from_env(&env).expect("loads");
+        assert_eq!(cfg.design, "stripe");
     }
 
     #[test]

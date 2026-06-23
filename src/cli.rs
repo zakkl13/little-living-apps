@@ -43,6 +43,34 @@ pub enum Command {
         /// The stack name (a directory under `stacks/`).
         name: String,
     },
+    /// Resolve / render the vendored design-system catalog. The scaffold draws a system and renders
+    /// its tokens through this command so the draw/lock logic stays in one (tested) place.
+    Design {
+        #[command(subcommand)]
+        action: DesignAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DesignAction {
+    /// Resolve `LILA_DESIGN` against the catalog and print the draw as `LILA_DESIGN_*` shell
+    /// assignments (brand, the `DESIGN.md` path, pool, source, seed, commit): `eval "$(lila design
+    /// draw random:7)"`. A blind `random` is bounded to the safe default pool.
+    Draw {
+        /// `random`, `random:<seed>`, or a `<brand>` pin.
+        choice: String,
+    },
+    /// Render a system's `DESIGN.md` into `tokens.css` (CSS custom properties + dark mode) on stdout.
+    Tokens {
+        /// Path to a `DESIGN.md`.
+        file: String,
+    },
+    /// List catalog systems (brand · category · voice) for guided selection. Defaults to the
+    /// `browsable` pool (what the design skill offers on request).
+    List {
+        /// `default`, `browsable` (the default), or `full`.
+        pool: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]

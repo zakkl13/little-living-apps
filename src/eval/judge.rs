@@ -278,7 +278,9 @@ mod tests {
         let blocks = vec![
             TraceBlock::Text { text: "hi".into() },
             TraceBlock::Thinking,
-            TraceBlock::ToolUse { name: "memory".into() },
+            TraceBlock::ToolUse {
+                name: "memory".into(),
+            },
             TraceBlock::ToolResult {
                 content: "ok".into(),
             },

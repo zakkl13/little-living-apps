@@ -45,6 +45,14 @@ pub fn run(name: &str) -> i32 {
     println!("{}", assign("LILA_STACK_SERVE_EXEC", &profile.serve_exec));
     println!("{}", assign("LILA_STACK_SERVE_ENV", &serve_env));
     println!("{}", assign("LILA_STACK_TOOLCHAIN", &toolchain));
+    // The design tokens sink if the stack opted in, else empty — bin/new-app reads this to decide
+    // whether to draw + render a design system for the instance.
+    let design_tokens = profile
+        .design
+        .as_ref()
+        .map(|d| d.tokens_path.as_str())
+        .unwrap_or("");
+    println!("{}", assign("LILA_STACK_DESIGN_TOKENS", design_tokens));
     0
 }
 

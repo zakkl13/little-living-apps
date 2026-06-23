@@ -30,3 +30,11 @@ prepare     = "bin/rails db:prepare"
 [prompt]
 worker  = "worker.md"
 manager = "manager.md"
+
+# Optional design contract (parallel to [validate]). Tells the framework where this stack keeps its
+# rendered tokens (the canonical sink the scaffold render writes and the design skill edits) and which
+# fragment explains how a worker applies the locked system in THIS stack's idiom. Omit the block to opt
+# out (the design skill + visual check then no-op for the stack).
+[design]
+tokens_path = "app/assets/stylesheets/tokens.css"
+apply       = "design.md"

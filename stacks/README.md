@@ -60,6 +60,15 @@ prepare     = "bin/rails db:prepare"   # optional; omit if the app needs no prep
 [prompt]
 worker  = "worker.md"
 manager = "manager.md"
+
+# OPTIONAL design contract (parallel to [validate]). Opts the stack into the design system: where it
+# keeps its rendered tokens (the canonical sink the scaffold render writes + the design skill edits)
+# and the fragment that tells a worker how to apply the locked system in THIS stack's idiom. Omit the
+# whole block to opt out — the design skill, the design self-validation rubric, and the looks_designed
+# grader all no-op for the stack (graceful, exactly like omitting [validate].prepare).
+[design]
+tokens_path = "app/assets/stylesheets/tokens.css"
+apply       = "design.md"
 ```
 
 `node-react/stack.toml` is the same shape with no `[toolchain]`, `exec = "node server.js"`,
@@ -74,6 +83,34 @@ manager = "manager.md"
 - **`manager.md`** is the "the app" bullets in the manager's runtime-environment section (what kind of
   app it is, how it reloads). Use the placeholders `{workspace}` and `{service}`; the framework fills
   them from the live runtime facts.
+
+## The design system (optional `[design]` block)
+
+A stack opts into the design system with the `[design]` block above. The **catalog** — the design
+systems themselves — is **framework-generic**, not per-stack: a design system is an abstract,
+stack-neutral bundle ("Linear-ish" reads the same in Rails or a SPA), so it lives once at
+`design/systems/<brand>/DESIGN.md` (vendored from [Open Design](https://github.com/nexu-io/open-design);
+see `design/systems/PROVENANCE`). Membership in three nested pools — `default` (the ~3 safe neutrals the
+framework may draw blindly) ⊂ `browsable` (the curated slice the design skill offers on request) ⊂
+`full` (all 150, reachable only by an explicit pin) — is recorded in `design/systems/INDEX.md`.
+
+The active choice is `LILA_DESIGN` (default `random`): `random` (blind draw from the **default** pool),
+`random:<seed>` (reproducible), or `<brand>` (pin any system from any pool). At standup `bin/new-app`
+resolves it with `lila design draw` and passes the chosen `DESIGN.md` into the scaffold env; the stack's
+`scaffold.sh` then **renders** it:
+
+- token extraction is stack-neutral — `lila design tokens <DESIGN.md>` emits CSS custom properties (+ a
+  dark-mode block) into the stack's `tokens_path`;
+- the **component layer** (buttons, inputs, card, nav, empty-state, list-row) is the stack's own,
+  authored once in its idiom and token-referencing — identical across systems, only the tokens differ;
+- the scaffold writes a committed **`design.lock`** at the app root (the active brand + the
+  selection-flow `source`: `default` | `invited` | `chosen` | `pinned`) and copies the active spec to
+  `.lila/DESIGN.md`. The look is **locked for the app's life** — the scaffold never rerolls an existing
+  lock; only the `design-system` skill (a user-driven selection) rewrites it.
+
+The block drives three generic consumers, all of which **no-op when it's absent**: the `design-system`
+skill (where to write/edit + how to apply), the worker `AGENTS.md` (the `apply` fragment + the design
+self-validation rubric), and the `looks_designed` eval grader (what "uses tokens" means here).
 
 ## Eval fixture
 

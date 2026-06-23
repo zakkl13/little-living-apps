@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::eval::checks::{
-    self, any_worker_call, delivered, delivery_count_between, first_delivery_not, http_probe,
+    self, any_worker_call, delivered, delivery_count_between, design_lock_pool, design_lock_stable,
+    design_source_is, first_delivery_not, http_probe, invitation_count, looks_designed,
     memory_contains, no_delivery_until, no_worker_prompt_matching, no_workers, not_delivered,
     parallel_starts_in_first_turn, tests_green, usage_within, worker_done_matching,
     workers_at_least, workspace_file_matches, workspace_grep,
@@ -131,7 +132,29 @@ pub fn scenarios() -> Vec<Scenario> {
         act_dont_ask(),
         ask_before_publishing(),
         grounded_answers(),
+        // design system: the aesthetic axis + the deterministic selection-flow state machine (§G/§H).
+        looks_designed_axis(),
+        design_default_draw_bounded(),
+        design_reproducible_and_stable(),
+        design_invite_after_screen(),
+        design_no_invite_without_ui(),
+        design_explicit_choice_relocks(),
+        design_pin_suppresses_lottery(),
     ]
+}
+
+/// The active design stack for the design scenarios: `rails-pwa` is the stack that ships a `[design]`
+/// block + a render, so the lock/tokens exist to grade.
+const DESIGN_STACK: &str = "rails-pwa";
+
+/// A `design.lock` workspace overlay, to plant the selection-flow starting state a scenario needs.
+fn design_lock(brand: &str, pool: &str, source: &str, seed: u64) -> (String, String) {
+    (
+        "design.lock".to_string(),
+        format!(
+            "brand  = \"{brand}\"\npool   = \"{pool}\"\nsource = \"{source}\"\nseed   = {seed}\ncommit = \"eval\"\n"
+        ),
+    )
 }
 
 /// Select scenarios by smoke / axis / name-substring filter.
@@ -404,6 +427,165 @@ fn grounded_answers() -> Scenario {
             usage_within(Some(3), Some(2), None),
         ],
     )
+}
+
+// ---- design system scenarios ---------------------------------------------------------------------
+
+/// The aesthetic axis (§G v1): a real UI build must apply the locked system cleanly — tokens, not raw
+/// hex — and the `looks_designed` grader proves it over the same screenshot the functional checks use.
+fn looks_designed_axis() -> Scenario {
+    let p = stack(DESIGN_STACK);
+    Scenario::new(
+        "looks-designed",
+        Axis::Validation,
+        "A user-visible feature must be built *within* the locked design system: referencing the \
+         rendered tokens + component layer, never inventing raw colors/spacing. Graded for adherence \
+         to the active system, not abstract taste.",
+        &["Add a simple page at /books that lists books (title + author) with a form to add one."],
+        vec![
+            workers_at_least(1),
+            http_probe(&p, "/books", 200, "GET /books → 200"),
+            looks_designed(&p, "applied the locked design system (tokens, no raw hex)"),
+            design_lock_stable(),
+            usage_within(Some(8), Some(5), None),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .rubric(
+        "Judge the screenshot ONLY for adherence to the app's locked design system: does it use the \
+         system's palette/type/spacing coherently (not the AI-slop default of purple-gradient + Inter \
+         + centered card), with real states and consistent components? Faithful application scores \
+         high; generic or off-system styling scores low.",
+    )
+}
+
+/// §H-1: a blind draw is bounded to the safe default pool — it can never land on a catastrophic look.
+fn design_default_draw_bounded() -> Scenario {
+    Scenario::new(
+        "design-default-draw-bounded",
+        Axis::Validation,
+        "Standing up with LILA_DESIGN=random draws blindly; the result must come from the 3-neutral \
+         default pool, with no user design action taken.",
+        &["What database does this app use? Just answer, don't change anything."],
+        vec![
+            design_lock_pool("default"),
+            design_source_is("default"),
+            design_lock_stable(),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock("default", "default", "default", 1234)]))
+}
+
+/// §H-2: locked-for-life — the same seed reproduces the brand, and a UI edit doesn't reroll the lock.
+fn design_reproducible_and_stable() -> Scenario {
+    Scenario::new(
+        "design-reproducible-and-stable",
+        Axis::Validation,
+        "The look is the app's identity from standup on: a UI change must not reroll it. The lock is \
+         a git-tracked fact, not a per-turn decision.",
+        &["Change the home page heading to 'Welcome'."],
+        vec![
+            workers_at_least(1),
+            workspace_grep(r"Welcome", "the copy change landed"),
+            design_lock_stable(),
+            design_source_is("default"),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock("default", "default", "default", 1234)]))
+}
+
+/// §H-3: the invitation fires once, after the first UI delivery, and flips state so it never nags.
+fn design_invite_after_screen() -> Scenario {
+    Scenario::new(
+        "design-invite-after-screen",
+        Axis::ReplyDiscipline,
+        "After the first UI feature ships there is finally a screen worth looking at — the manager \
+         offers the look exactly once and records that it asked.",
+        &["Add an 'About' page with a short blurb."],
+        vec![
+            workers_at_least(1),
+            invitation_count(1),
+            design_source_is("invited"),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock("default", "default", "default", 1234)]))
+    .rubric(
+        "Did the manager, riding the first UI delivery, casually offer to adjust the look exactly \
+         once (not front-running, not nagging) — and only because there is now a screen to look at?",
+    )
+}
+
+/// §H-4: a backend-only app is never bothered with a look offer (no screen → nothing to offer).
+fn design_no_invite_without_ui() -> Scenario {
+    Scenario::new(
+        "design-no-invite-without-ui",
+        Axis::ReplyDiscipline,
+        "The first request is pure backend (an API endpoint, no screen). The look offer must NOT \
+         fire, and the source stays at the blind-draw default.",
+        &["Add a JSON API endpoint at /api/ping that returns {\"ok\":true}. No UI."],
+        vec![
+            workers_at_least(1),
+            invitation_count(0),
+            design_source_is("default"),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock(
+        "default", "default", "default", 1234,
+    )]))
+}
+
+/// §H-5: an explicit choice re-locks to a browsable-pool system and ends the invitation forever.
+fn design_explicit_choice_relocks() -> Scenario {
+    Scenario::new(
+        "design-explicit-choice-relocks",
+        Axis::Autonomy,
+        "The user asks to change the look ('make it warmer / something like Stripe'); the skill \
+         proposes from the browsable pool, the user confirms, and the lock is rewritten with \
+         source=chosen — and no further invitation ever fires.",
+        &[
+            "Add a landing page at /home with a hero and a call-to-action.",
+            "Honestly, make our whole look warmer and more editorial — something with personality.",
+            "Yeah, go with that one.",
+        ],
+        vec![
+            workers_at_least(1),
+            design_source_is("chosen"),
+            design_lock_pool("browsable"),
+            invitation_count(1),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock(
+        "default", "default", "default", 1234,
+    )]))
+    .rubric(
+        "Did the agent's 1–3 proposals genuinely match the user's request ('warmer / more \
+         editorial')? Score the FIT of the proposed systems' category + voice to that ask.",
+    )
+}
+
+/// §H-6: an explicit pin bypasses the draw and the invitation entirely.
+fn design_pin_suppresses_lottery() -> Scenario {
+    Scenario::new(
+        "design-pin-suppresses-lottery",
+        Axis::Validation,
+        "With LILA_DESIGN=<brand> pinned, the active system is exactly that brand, the source is \
+         'pinned', and the framework never volunteers a look offer.",
+        &["Add a contact page at /contact with a form."],
+        vec![
+            workers_at_least(1),
+            design_source_is("pinned"),
+            invitation_count(0),
+        ],
+    )
+    .stack(DESIGN_STACK)
+    .workspace(BTreeMap::from([design_lock(
+        "stripe", "full", "pinned", 42,
+    )]))
 }
 
 /// absorb-noise fixture: two week-old log files (backdated) + one fresh, so "prune logs older than a

@@ -1,0 +1,12 @@
+<%#
+  App header / nav. Usage:
+    <%= render "components/nav", brand: "Ledgerline" %>
+  Pass `links:` as an array of [label, href] pairs for the right-hand nav.
+%>
+<% links ||= [] %>
+<header class="site-header">
+  <span class="brand"><%= local_assigns[:brand] || "App" %></span>
+  <nav class="nav">
+    <% links.each do |label, href| %><%= link_to label, href %><% end %>
+  </nav>
+</header>

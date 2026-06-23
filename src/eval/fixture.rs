@@ -105,7 +105,7 @@ pub fn seed_stack(
         )));
     }
     clone_tree(&template, dir)?;
-    let rules = build_worker_agents_md(&profile.worker_prompt);
+    let rules = build_worker_agents_md(profile);
     for name in ["AGENTS.md", "CLAUDE.md"] {
         std::fs::write(dir.join(name), &rules)?;
     }

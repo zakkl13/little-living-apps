@@ -2,6 +2,7 @@
 //! no behavior lives only here. Returns an exit code so `main` can `process::exit`.
 
 mod config_check;
+mod design;
 mod doctor;
 mod memory_cmd;
 mod run;
@@ -26,6 +27,7 @@ pub async fn dispatch(command: Command) -> i32 {
             }
         },
         Command::Stack { name } => stack::run(&name),
+        Command::Design { action } => design::run(action),
     }
 }
 

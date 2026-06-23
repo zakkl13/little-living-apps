@@ -225,6 +225,18 @@ directory: no Rust changes, no recompile. Rails 8 + PWA ships as the batteries-i
 `node-react` (a zero-build Node + React PWA) ships alongside it. See [`stacks/README.md`](stacks/README.md)
 to add your own.
 
+**A safe design system, picked for you — and yours to change.** Each instance starts on a real, coherent
+design system drawn from a **vendored catalog of [Open Design](https://github.com/nexu-io/open-design)
+systems** (`design/systems/`, Apache-2.0, see [`design/systems/PROVENANCE`](design/systems/PROVENANCE)) —
+rendered into real tokens + a component layer at standup, so even a zero-effort app looks *designed*, not
+like raw Rails or AI slop. The framework only ever draws *blindly* from a tiny pool of safe neutrals, so
+no fresh app can land on a catastrophic look; after the first screen ships the agent offers — once — to
+pick a different look, and you can change it anytime ("make it warmer", "something like Stripe"). Pin one
+outright with `LILA_DESIGN=<brand>` (any of the 150 systems) or `random` (the default). lila imposes no
+taste of its own — it picks something safe and hands you the wheel. The look is locked per app and won't
+reroll on its own. Stacks opt in with a `[design]` block; "looks designed" is then a *measured* gate like
+every other (the `looks_designed` eval grader + the selection-flow scenarios).
+
 ### Rust — the orchestrator
 
 The manager loop, event queue, MCP tools, worker runner, and durability layer that hold the system

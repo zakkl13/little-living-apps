@@ -13,6 +13,7 @@
 pub mod cli;
 pub mod commands;
 pub mod config;
+pub mod design;
 pub mod eval;
 pub mod inspector;
 pub mod logging;

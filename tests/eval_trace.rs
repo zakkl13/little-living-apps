@@ -26,7 +26,11 @@ fn spawn_run_with_trace(
         .env_clear()
         // Forward the coverage profile path through env_clear() (see agent_loop.rs); a no-op
         // under plain `cargo test`.
-        .envs(std::env::var("LLVM_PROFILE_FILE").ok().map(|v| ("LLVM_PROFILE_FILE", v)))
+        .envs(
+            std::env::var("LLVM_PROFILE_FILE")
+                .ok()
+                .map(|v| ("LLVM_PROFILE_FILE", v)),
+        )
         .env("PATH", path)
         .env("HOME", state_dir)
         .env("TELEGRAM_BOT_TOKEN", "test-token")

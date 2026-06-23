@@ -189,7 +189,9 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 pub async fn terminate(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         // `/bin/kill` sends SIGTERM by default — no `unsafe`/libc, portable across macOS + Linux.
-        let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
+        let _ = std::process::Command::new("kill")
+            .arg(pid.to_string())
+            .status();
     }
     if tokio::time::timeout(Duration::from_secs(5), child.wait())
         .await

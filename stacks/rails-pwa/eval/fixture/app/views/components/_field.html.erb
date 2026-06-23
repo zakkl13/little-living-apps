@@ -1,0 +1,14 @@
+<%#
+  Labelled form field. Usage (inside a form_with |form|):
+    <%= render "components/field", form: form, name: :title, label: "Title" %>
+    <%= render "components/field", form: form, name: :body, label: "Body", as: :text_area %>
+%>
+<% as ||= :text_field %>
+<div class="field">
+  <%= form.label name, label, class: "label" %>
+  <% if as == :text_area %>
+    <%= form.text_area name, class: "textarea", rows: (local_assigns[:rows] || 4) %>
+  <% else %>
+    <%= form.send(as, name, class: "input", placeholder: local_assigns[:placeholder]) %>
+  <% end %>
+</div>

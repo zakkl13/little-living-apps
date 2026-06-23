@@ -1,0 +1,9 @@
+<%#
+  Card surface. Usage:
+    <%= render "components/card" do %> ...content... <% end %>
+    <%= render "components/card", title: "Reading log" do %> ... <% end %>
+%>
+<div class="card">
+  <% if local_assigns[:title] %><h3><%= title %></h3><% end %>
+  <%= yield if block_given? %>
+</div>

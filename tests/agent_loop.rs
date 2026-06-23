@@ -25,7 +25,11 @@ fn spawn_run(
         // Forward the coverage profile path through env_clear() so the spawned (instrumented)
         // daemon writes its own .profraw; absent under plain `cargo test`, so the env stays
         // hermetic. The %p-%10m pattern keeps each subprocess's profile distinct.
-        .envs(std::env::var("LLVM_PROFILE_FILE").ok().map(|v| ("LLVM_PROFILE_FILE", v)))
+        .envs(
+            std::env::var("LLVM_PROFILE_FILE")
+                .ok()
+                .map(|v| ("LLVM_PROFILE_FILE", v)),
+        )
         .env("PATH", path)
         .env("HOME", state_dir) // git init is happy with any HOME
         .env("TELEGRAM_BOT_TOKEN", "test-token")

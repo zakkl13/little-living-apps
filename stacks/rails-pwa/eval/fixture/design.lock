@@ -1,0 +1,5 @@
+brand  = "default"
+pool   = "default"
+source = "pinned"
+seed   = 0
+commit = "f4fe5ad7579b81f9722f6db051d9768abc570577"

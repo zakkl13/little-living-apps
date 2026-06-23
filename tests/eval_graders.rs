@@ -177,6 +177,169 @@ fn memory_contains_reads_real_files() {
     assert!(!run(&checks::memory_contains("Postgres"), &t));
 }
 
+// ---- design selection-flow graders (read design.lock + deliveries) -------------
+
+fn write_lock(ws: &PathBuf, body: &str) {
+    std::fs::create_dir_all(ws).unwrap();
+    std::fs::write(ws.join("design.lock"), body).unwrap();
+}
+
+fn git_commit(ws: &PathBuf) {
+    for args in [
+        vec!["init", "-q"],
+        vec!["add", "-A"],
+        vec![
+            "-c",
+            "user.email=e@e",
+            "-c",
+            "user.name=e",
+            "commit",
+            "-qm",
+            "x",
+        ],
+    ] {
+        Command::new("git")
+            .args(&args)
+            .current_dir(ws)
+            .status()
+            .unwrap();
+    }
+}
+
+#[test]
+fn design_lock_pool_and_source_graders() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    // A blind default draw landed on a real default-pool brand.
+    write_lock(
+        &ws,
+        "brand  = \"default\"\npool   = \"default\"\nsource = \"default\"\nseed   = 7\ncommit = \"abc\"\n",
+    );
+    let t = Builder::default().build(ws.clone(), tmp.path().join("m"));
+
+    assert!(
+        run(&checks::design_lock_pool("default"), &t),
+        "pool is default"
+    );
+    assert!(
+        !run(&checks::design_lock_pool("browsable"), &t),
+        "the recorded pool field must match exactly (a default lock is not 'browsable')"
+    );
+    assert!(run(&checks::design_source_is("default"), &t));
+    assert!(!run(&checks::design_source_is("chosen"), &t));
+
+    // Nesting: a lock that came from the browsable pool but landed on a default-tier brand still
+    // counts as a valid browsable member (default ⊂ browsable).
+    write_lock(
+        &ws,
+        "brand  = \"default\"\npool   = \"browsable\"\nsource = \"chosen\"\nseed   = 3\ncommit = \"abc\"\n",
+    );
+    let nested = Builder::default().build(ws.clone(), tmp.path().join("m"));
+    assert!(
+        run(&checks::design_lock_pool("browsable"), &nested),
+        "a default-tier brand is admitted by the browsable pool"
+    );
+
+    // A full-pool pin must NOT count as a default-pool member (the blind-draw bound).
+    write_lock(
+        &ws,
+        "brand  = \"stripe\"\npool   = \"full\"\nsource = \"pinned\"\nseed   = 1\ncommit = \"abc\"\n",
+    );
+    let t2 = Builder::default().build(ws, tmp.path().join("m"));
+    assert!(run(&checks::design_lock_pool("full"), &t2));
+    assert!(
+        !run(&checks::design_lock_pool("default"), &t2),
+        "stripe is not in the safe default pool"
+    );
+    assert!(run(&checks::design_source_is("pinned"), &t2));
+}
+
+#[test]
+fn design_lock_stable_detects_drift() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    let baseline = "brand  = \"default\"\npool   = \"default\"\nsource = \"default\"\nseed   = 7\ncommit = \"abc\"\n";
+    write_lock(&ws, baseline);
+    git_commit(&ws);
+    let t = Builder::default().build(ws.clone(), tmp.path().join("m"));
+    assert!(
+        run(&checks::design_lock_stable(), &t),
+        "unchanged lock is stable"
+    );
+
+    // A reroll (the lock changed since standup) must be caught.
+    write_lock(
+        &ws,
+        "brand  = \"friendly\"\npool   = \"default\"\nsource = \"default\"\nseed   = 9\ncommit = \"abc\"\n",
+    );
+    assert!(!run(&checks::design_lock_stable(), &t), "drift is caught");
+}
+
+#[test]
+fn looks_designed_grader_over_the_rendered_rails_baseline() {
+    let p = StackProfile::load("rails-pwa").expect("rails-pwa loads");
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    // No ruby needed — this only clones the rendered tree + reads files.
+    fixture::seed_stack(&p, &ws, &BTreeMap::new()).unwrap();
+
+    let t = Builder::default().build(ws.clone(), tmp.path().join("m"));
+    assert!(
+        run(&checks::looks_designed(&p, "designed"), &t),
+        "the rendered baseline (tokens + lock, no raw hex) looks designed"
+    );
+
+    // Slop: a worker hardcodes a raw hex color in a view → the grader catches it.
+    std::fs::write(
+        ws.join("app/views/slop.html.erb"),
+        "<div style=\"color:#ff00aa\">x</div>",
+    )
+    .unwrap();
+    let slopped = Builder::default().build(ws, tmp.path().join("m"));
+    assert!(
+        !run(&checks::looks_designed(&p, "designed"), &slopped),
+        "a raw hex outside tokens.css is flagged as slop"
+    );
+
+    // A stack with no [design] block no-ops (graceful opt-out).
+    let node = node_stack();
+    let tmp2 = tempfile::tempdir().unwrap();
+    let ws2 = tmp2.path().join("ws");
+    fixture::seed_stack(&node, &ws2, &BTreeMap::new()).unwrap();
+    let t3 = Builder::default().build(ws2, tmp2.path().join("m"));
+    assert!(
+        run(&checks::looks_designed(&node, "designed"), &t3),
+        "a stack that opts out of design passes the aesthetic axis trivially"
+    );
+}
+
+#[test]
+fn invitation_count_matches_the_offer_shape() {
+    let tmp = tempfile::tempdir().unwrap();
+    let ws = tmp.path().join("ws");
+    let mem = tmp.path().join("m");
+
+    let offered = Builder::default()
+        .delivery("Added the reading log and it's live.")
+        .delivery(
+            "btw I gave it a clean neutral look to start — want something with more personality?",
+        )
+        .build(ws.clone(), mem.clone());
+    assert!(
+        run(&checks::invitation_count(1), &offered),
+        "one offer counted"
+    );
+    assert!(!run(&checks::invitation_count(0), &offered));
+
+    let silent = Builder::default()
+        .delivery("Done — the API endpoint returns the latest entries.")
+        .build(ws, mem);
+    assert!(
+        run(&checks::invitation_count(0), &silent),
+        "a backend-only reply carries no look offer"
+    );
+}
+
 // ---- the fixture's planted realities (spawn node) ------------------------------
 
 fn seed_fixture(overlay: &BTreeMap<String, String>) -> (tempfile::TempDir, EvalTranscript) {
