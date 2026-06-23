@@ -1,5 +1,8 @@
 /target
 
+# macOS Finder metadata
+.DS_Store
+
 # llvm-cov coverage artifacts (scripts/coverage.sh) — profile data + generated badge JSON
 *.profraw
 /coverage.json
@@ -23,3 +26,4 @@
 # Hero-video staging workspace (Remotion project + node_modules + raw captures). The finished
 # assets live in /docs and are committed; the staging tree is local-only (~510MB).
 /video-assets-staging/
+/video-assets-boxes/
