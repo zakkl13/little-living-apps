@@ -6,7 +6,9 @@
 
 Text it into being. Text it as it grows.
 
-**One agent. One app. One host you own.**
+**One agent. One app. One host.**
+
+You text it; an agent builds a real app, ships it, and then lives on your own box maintaining it for good.
 
 <a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot to build a shower-thought app; an agent creates a phone app that captures ideas into a visual knowledge map, then ships a calmer dark mode after another text request." width="100%"></a>
 
@@ -21,8 +23,8 @@ Text it into being. Text it as it grows.
 
 ## What this is
 
-**Little Living Apps is a living app-agent framework.** You text a manager on Telegram in plain
-language. An agent builds it, ships it, and then *keeps maintaining* a real web or mobile app for you,
+**Little Living Apps is an agent that builds your app from plain text, then never leaves.** You text a
+manager on Telegram; it builds, ships, and then *keeps maintaining* a real web or mobile app for you,
 indefinitely.
 
 The framework deals in **apps and functionality, not code**. You say what the app should *do*
