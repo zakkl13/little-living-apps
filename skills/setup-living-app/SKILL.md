@@ -26,10 +26,11 @@ The whole flow on the remote box, once you have SSH and the two Telegram values:
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env
-# edit .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (optionally LILA_DOMAIN)
+# edit .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (optionally LILA_STACK, LILA_DOMAIN)
 sudo bash bootstrap.sh
-# one-time login (default Codex backend / ChatGPT subscription):
-sudo -u "$USER" -H CODEX_HOME=/var/lib/lila/codex ~/.local/bin/mise exec -- codex login --device-auth
+# one-time login (default Codex backend / ChatGPT subscription) — run the exact command
+# bootstrap.sh just printed; it fills in the service user. It looks like:
+sudo -u <service-user> -H CODEX_HOME=/var/lib/lila/codex ~<service-user>/.local/bin/mise exec -- codex login --device-auth
 sudo systemctl start lila-manager@primary
 journalctl -u lila-manager@primary -f
 ```
@@ -73,6 +74,11 @@ Work through these in order. Check each off before moving on.
 - Set `TELEGRAM_BOT_TOKEN` and `ALLOWED_USER_IDS` in `.env`. Set `AGENT_BACKEND=claude` only if the
   user chose Claude. For a public domain now, also set `LILA_DOMAIN` (see step 8); otherwise leave it
   unset and the app stays private to the box.
+- **Pick the app stack (optional).** The *stack* decides the kind of app the agent builds. It ships
+  with `rails-pwa` (Rails 8 + PWA — the default) and `node-react` (a zero-build Node + React PWA);
+  more can be dropped in under `stacks/`. To use something other than the default, set
+  `LILA_STACK=node-react` in `.env` before bootstrap. Leave it unset for Rails. See
+  [REFERENCE.md](REFERENCE.md) for how stacks work and how to add your own.
 
 ### 6. Run bootstrap (you)
 - `sudo bash bootstrap.sh`. It's idempotent. It installs mise → Ruby + Node, the agent CLI,

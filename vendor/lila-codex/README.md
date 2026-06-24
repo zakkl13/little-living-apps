@@ -1,6 +1,6 @@
 # Codex Rust SDK
 
-[English](README.md) | [中文](README_zh.md)
+[English](README.md)
 
 Rust SDK for embedding the Codex agent in applications by driving the `codex` CLI over JSONL (`codex exec --experimental-json`).
 

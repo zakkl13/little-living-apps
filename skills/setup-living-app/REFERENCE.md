@@ -24,6 +24,37 @@ Provisioning is something the **user** does in the provider's console (it costs 
 payment method) — you cannot buy it for them. Give them the spec above and the exact OS image to
 pick, then take over once SSH works.
 
+## Choosing an app stack
+
+The **stack** decides the *kind of app* the agent builds and maintains — its toolchain, scaffold,
+serve command, and the prompts the workers run under. It's a data-driven plugin: a directory under
+`stacks/<name>/` (a `stack.toml` plus a scaffold script and two prompt fragments), with no Rust code
+or recompile needed to add one.
+
+Ships with two:
+
+- **`rails-pwa`** (default) — "Rails 8 + PWA". SQLite + the Solid stack + Hotwire + PWA stubs. The
+  most batteries-included option; good when you want a full server-rendered app with auth.
+- **`node-react`** — "Node + React (PWA)". A zero-build Node + React PWA. Lighter toolchain; good
+  when the user wants a JS/React-flavored app.
+
+Pick **per instance** with `LILA_STACK` (env var, or the line in `.env`; default `rails-pwa`):
+
+```bash
+# in .env, before bootstrap:
+LILA_STACK=node-react
+```
+
+The choice is locked into that instance's env file at provision time, so the same value drives the
+scaffold, the systemd serve unit, the app toolchain, the worker/manager prompts, and the eval
+fixture. Different instances on the same box can run different stacks (`bin/new-instance` inherits the
+primary's stack unless you override `LILA_STACK` for the new one).
+
+**Adding your own:** copy an existing `stacks/<name>/` directory, edit its `stack.toml` + `scaffold.sh`
++ the two prompt fragments, and point `LILA_STACK` at the new name — no framework changes. (The design
+system is framework-universal and independent of the stack: every app draws a design regardless of
+which stack it runs.)
+
 ## Firewall / network
 
 - The bot itself needs **no inbound ports** — it talks to Telegram by outbound long-poll. Default

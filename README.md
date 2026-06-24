@@ -20,14 +20,14 @@ Text it into being. Text it as it grows.
 ## What this is
 
 **Little Living Apps is a living-app agent framework.** You text a manager on Telegram in plain
-language; a small team of agents builds, ships, and then *keeps maintaining* a real web or mobile app for you —
+language; an agent builds, ships, and then *keeps maintaining* a real web or mobile app for you —
 indefinitely.
 
 The framework deals in **apps and functionality, not code**. You describe what the app should *do* —
 "build me a reading log," "add tags by genre," "filter the list" — and the agents own every line,
 every deploy, and every change after that. You never open an editor. You never read a diff.
 
-"Living" is the whole point: the agent team doesn't generate-and-leave. It keeps planning,
+"Living" is the whole point: the agent doesn't generate-and-leave. It keeps planning,
 remembering, and shipping against the *same* app, so next week's "add a chart" lands in the same
 place this week's reading log did.
 
@@ -38,13 +38,11 @@ the entire dependency list.
 
 ## Quick start
 
-Fresh Ubuntu 22.04+/Debian 12 host. No API key required.
-
 ### Let an agent set it up for you
 
 The fastest path is to hand the whole setup to Claude Code or Codex. Point it at this repo and ask:
 
-> **go check out the GitHub repo zakkl13/little-living-apps and set up an instance for me**
+> **go check out the GitHub repo zakkl13/little-living-apps and set up an app instance for me**
 
 The agent drives the rest end to end — VPS sizing, SSH, the Telegram bot, `.env`, bootstrap, the
 one-time subscription login, and an optional domain with HTTPS — pausing only for the handful of
@@ -86,7 +84,7 @@ delegates, builds, and reports back. The control commands:
 
 ### More than one app
 
-The model is always *one manager, one app*. Want more apps? Run it more than once. Each instance gets
+The model is always *one manager, one app*. Want more apps on a single host? Run it more than once. Each instance gets
 its own manager, Telegram bot, workspace, ports, and domain:
 
 ```bash
