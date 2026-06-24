@@ -119,8 +119,14 @@ umask 022
 log "Installing systemd template unit lila-manager@.service; enabling lila-manager@$NAME"
 # The mise node bin dir (holds codex+node) goes on the manager unit's PATH (it runs the native binary,
 # which gets no mise shell hook). Same dir the /opt/lila/bin/lila binary was built against.
-NODEBIN="$(run_as 'dirname "$(mise which codex)"')"
-[[ -n "$NODEBIN" ]] || die "Could not resolve codex via mise — run bootstrap.sh on this host first."
+# Resolve it via the ABSOLUTE $MISE: a bare `mise` is NOT on PATH in the non-interactive `run_as` login
+# shell (e.g. under SSM), so `mise which codex` would print nothing and `dirname ""` would silently
+# yield ".", baking a broken `PATH=.:…` into the unit that crash-loops the manager ("codex init: Codex
+# CLI not found"). Fail loudly instead if the bin dir can't be resolved.
+CODEX_BIN="$(run_as "'$MISE' which codex" 2>/dev/null || true)"
+NODEBIN="$(dirname -- "$CODEX_BIN" 2>/dev/null || true)"
+[[ -n "$CODEX_BIN" && "$NODEBIN" != "." && -d "$NODEBIN" ]] ||
+  die "Could not resolve the codex CLI bin dir via mise (got NODEBIN='$NODEBIN'). Run bootstrap.sh on this host first."
 sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__NODEBIN__|$NODEBIN|g" \
   "$REPO_DIR/deploy/lila-manager@.service" > /etc/systemd/system/lila-manager@.service
 systemctl daemon-reload
