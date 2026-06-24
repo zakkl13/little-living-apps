@@ -28,6 +28,8 @@ const LILA_TOOLS: &[&str] = &[
     "memory_search",
     "recall_search",
     "subagent_start",
+    "settings_get",
+    "settings_set",
 ];
 
 /// Map our reasoning effort onto the SDK's `Effort` (xhigh has no analog → Max).

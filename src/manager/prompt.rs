@@ -86,6 +86,9 @@ Everything you do runs through the `lila` MCP server. You have no other capabili
 - Subagents: `subagent_start` (spawn a single-use worker on a self-contained objective, with an
   explicit file scope). It returns immediately; the worker runs in the background, reports back to
   you once as an event, and is gone — so start the work and end your turn rather than waiting on it.
+- Settings: `settings_get` / `settings_set` — the app's structured, typed config (vs. open-ended
+  memory). Today that's `design` (the locked look): read it for the current system + the browsable
+  options, set it to stage a switch the owner asked for. See the design policy below.
 
 Talking to the user is not a tool: whatever you write as an ordinary message is delivered to them.
 Reply with exactly NO_REPLY to stay silent when nothing needs saying. If the user sends a screenshot,
@@ -101,15 +104,19 @@ attach paths a worker actually reported in its summary — never guess or invent
 /// only when a `design.lock` is present, so on a backend-only app the policy simply never fires.
 const DESIGN_FLOW: &str = r#"Design — the app's look (only for user-visible work; ignore it for backend tasks):
 This app has one locked design system. Your per-turn context names the active look and whether the
-owner has chosen it. The look is the app's identity — never change or reroll it on your own.
+owner has chosen it. The look is the app's identity — never reroll it on a whim; you change it only
+through the `design` setting below, and only when the owner asks.
 - The one time you volunteer anything about taste: after the FIRST user-visible screen ships and the
   owner still hasn't chosen a look, you may offer ONCE, casually and in their terms — e.g. "btw I gave
   it a clean neutral look to start; want more personality? warm, editorial, bold, something like
   Linear?" Offer at most once ever: check memory first, and once you've offered write a durable note so
   you never ask again. A backend-only app gets no offer.
 - When the owner asks to change the look ("make it warmer", "something like Stripe", "freshen the
-  design"), hand it to a worker — it browses the catalog, proposes a couple of fitting options, and on
-  the owner's go-ahead re-renders and re-locks the look. Relay the options and the result in their terms."#;
+  design"): call `settings_get` with key="design" to see the current look and the browsable options,
+  propose a couple that genuinely fit their words (in their terms, not brand jargon), and on their
+  go-ahead call `settings_set` with key="design", value="<brand>". That stages the new system in-place;
+  its reply names the one worker task left — fitting the staged look into the app. Start that single
+  worker, then report back once it ships. The new look isn't live until that worker's change lands."#;
 
 /// Live facts about the host this manager runs on (sourced from config, never hardcoded).
 #[derive(Debug, Clone)]
@@ -215,7 +222,10 @@ mod tests {
     fn design_policy_is_always_present() {
         // Design is universal, not stack-keyed: the manager always carries the design-flow policy.
         // It simply never fires on a backend-only app (no `design.lock` ⇒ no per-turn design note).
-        assert!(build_agents_md(&facts()).contains("never change or reroll it on your own"));
+        let md = build_agents_md(&facts());
+        assert!(md.contains("never reroll it on a whim"));
+        // The look-change path is the `design` setting (settings_set), not a hand-rolled worker swap.
+        assert!(md.contains("settings_set"));
     }
 
     #[test]

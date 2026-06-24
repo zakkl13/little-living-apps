@@ -543,9 +543,10 @@ fn design_explicit_choice_relocks() -> Scenario {
     Scenario::new(
         "design-explicit-choice-relocks",
         Axis::Autonomy,
-        "The user asks to change the look ('make it warmer / something like Stripe'); a worker \
-         proposes from the browsable pool, the user confirms, and the lock is rewritten with \
-         source=chosen — and no further invitation ever fires.",
+        "The user asks to change the look ('make it warmer / something like Stripe'); the manager \
+         proposes from the browsable pool (settings_get), the user confirms, the manager applies it \
+         (settings_set design=<brand> → source=chosen) and hands a worker the stack-fit — and no \
+         further invitation ever fires.",
         &[
             "Add a landing page at /home with a hero and a call-to-action.",
             "Honestly, make our whole look warmer and more editorial — something with personality.",

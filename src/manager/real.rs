@@ -2,7 +2,7 @@
 //! for Codex and `CLAUDE.md` for Claude Code), start the Lila MCP server, and build the
 //! Codex/Claude backend pointed at it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::config::{AgentBackend, Config};
@@ -28,7 +28,14 @@ pub async fn build_backend(
         .clone()
         .unwrap_or_else(|| format!("lila-{}", uuid::Uuid::new_v4().simple()));
     let port = cfg.lila_mcp_port.unwrap_or(0);
-    let mcp = mcp::start(mem.clone(), orch.clone(), token.clone(), port).await?;
+    let mcp = mcp::start(
+        mem.clone(),
+        orch.clone(),
+        PathBuf::from(&cfg.workspace_dir),
+        token.clone(),
+        port,
+    )
+    .await?;
 
     let backend: Box<dyn ManagerBackend> = match cfg.agent_backend {
         AgentBackend::Codex => Box::new(CodexBackend::new(cfg, &mcp.url, &token)?),

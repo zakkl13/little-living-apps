@@ -9,6 +9,7 @@ pub mod driver;
 pub mod mcp;
 pub mod prompt;
 pub mod real;
+pub mod settings;
 
 // The scripted fake backend is always compiled but inert unless `LILA_FAKE_BACKEND` is set at
 // runtime — it is the seam the binary-driven integration tests drive.

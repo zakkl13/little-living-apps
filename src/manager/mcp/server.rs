@@ -3,6 +3,7 @@
 //! thread reaches it via `mcp_servers.lila.url` + a per-boot bearer token. There is deliberately no
 //! shell/file/net tool — the manager's "no hands" boundary is exactly this tool list.
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -20,6 +21,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
+use crate::manager::settings;
 use crate::memory::{MemFs, MemoryCommand};
 use crate::workers::Orchestrator;
 
@@ -28,6 +30,8 @@ use crate::workers::Orchestrator;
 pub struct LilaServer {
     mem: Arc<Mutex<MemFs>>,
     orch: Arc<Orchestrator>,
+    /// The app workspace — where `settings_*` read/write structured state (e.g. `design.lock`).
+    workspace_dir: PathBuf,
     tool_router: ToolRouter<Self>,
 }
 
@@ -76,6 +80,18 @@ struct SubagentReq {
     objective: String,
     /// Project dir under the workspace (optional).
     project: Option<String>,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SettingsGetReq {
+    /// A single setting to read (e.g. `design`). Omit to list every setting.
+    key: Option<String>,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SettingsSetReq {
+    /// The setting to change (e.g. `design`).
+    key: String,
+    /// The new value (for `design`, a brand from the browsable pool).
+    value: String,
 }
 
 #[tool_router(router = tool_router)]
@@ -169,6 +185,25 @@ impl LilaServer {
         let id = self.orch.start(p.0.objective, p.0.project);
         format!("subagent {id} started — it will report back once when it finishes")
     }
+
+    /// Read the app's structured settings.
+    #[tool(
+        description = "Read the app's structured settings (the typed counterpart to memories). Omit `key` to list all; pass e.g. key=\"design\" for one. `design` is the app's locked look — reading it shows the current system and the browsable pool you can switch to."
+    )]
+    async fn settings_get(&self, p: Parameters<SettingsGetReq>) -> String {
+        settings::get(p.0.key.as_deref(), &self.workspace_dir)
+    }
+
+    /// Change a writable setting.
+    #[tool(
+        description = "Change a writable setting. settings_set key=\"design\" value=\"<brand>\" switches the app's locked look to a browsable-pool system: it stages the new system (refreshes .lila/ and re-locks design.lock as the owner's choice) in-process. The new look only ships once you hand a worker the stack-fit it returns. Read settings_get first to see valid brands."
+    )]
+    async fn settings_set(&self, p: Parameters<SettingsSetReq>) -> String {
+        match settings::set(&p.0.key, &p.0.value, &self.workspace_dir) {
+            Ok(summary) => summary,
+            Err(e) => format!("error: {e}"),
+        }
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -179,7 +214,7 @@ impl ServerHandler for LilaServer {
         let mut info = ServerInfo::default();
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
         info.instructions = Some(
-            "The manager's only hands: memory_* tools + subagent_start. No shell/file/net."
+            "The manager's only hands: memory_* tools, settings_get/settings_set, and subagent_start. No shell/file/net."
                 .to_string(),
         );
         info
@@ -222,17 +257,20 @@ impl RunningMcp {
 pub async fn start(
     mem: Arc<Mutex<MemFs>>,
     orch: Arc<Orchestrator>,
+    workspace_dir: PathBuf,
     token: String,
     port: u16,
 ) -> anyhow::Result<RunningMcp> {
     let cancel = CancellationToken::new();
     let factory_mem = mem.clone();
     let factory_orch = orch.clone();
+    let factory_ws = workspace_dir.clone();
     let service = StreamableHttpService::new(
         move || {
             Ok(LilaServer {
                 mem: factory_mem.clone(),
                 orch: factory_orch.clone(),
+                workspace_dir: factory_ws.clone(),
                 tool_router: LilaServer::tool_router(),
             })
         },

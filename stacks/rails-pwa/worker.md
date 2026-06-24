@@ -27,8 +27,26 @@ as the **curated Open Design package** under `.lila/`. Build *within* it — nev
   pre-built component layer; you create it, guided by the reference.
 - **Honor the universal floor too:** real empty / loading / error states; a consistent SVG icon set
   (never emoji as icons); the type scale; AA contrast.
-- Do **not** reroll, swap, or re-pick the system on your own. The look is the app's identity from
-  standup on — a git-tracked fact, changed only by a user-driven selection.
+- **Don't pick or swap the system yourself.** Which look is locked is the manager's call — it drives
+  any owner-requested change through its `design` setting. Your two design jobs are: build *within* the
+  locked look (above), and — only when the manager hands you a *staged* look change — fit it to the app
+  (below).
+
+## Fitting a staged design change (only when the manager hands you one)
+
+The manager has already staged the new system: `.lila/` now holds its full curated package
+(`tokens.css`, `DESIGN.md`, `USAGE.md`, `components.html`, `components.manifest.json`,
+`design-tokens.json`) and `design.lock` already names it with `source = chosen`. You do **not** draw,
+re-pick, or re-lock anything — you make the staged look real in the app:
+
+1. **Install the new tokens.** Copy `.lila/tokens.css` verbatim into the app's token sheet
+   (`app/assets/stylesheets/tokens.css` for this stack — already linked in the layout). Never hand-edit
+   token values.
+2. **Re-fit the views/components** to the new tokens + reference (`.lila/USAGE.md`,
+   `.lila/components.html`). Token *names* are stable across systems, so most carries over; update any
+   component CSS that baked in the old system's recipes, and honor the new brand's "Do's and Don'ts".
+3. **Restart the app, then self-validate as below** (screenshot the changed screens + the token grep)
+   and report which system is now live.
 
 When your change is user-visible, your self-validation must also show it stayed *within* the system —
 with concrete evidence, never a bare "looks good":

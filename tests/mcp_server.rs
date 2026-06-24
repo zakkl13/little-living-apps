@@ -54,7 +54,9 @@ async fn start_server(
         telemetry,
         None,
     ));
-    let server = mcp::start(mem, orch, token.to_string(), 0).await.unwrap();
+    let server = mcp::start(mem, orch, dir.join("ws"), token.to_string(), 0)
+        .await
+        .unwrap();
     (server, rx)
 }
 
@@ -81,6 +83,8 @@ async fn memory_tools_round_trip_over_mcp() {
     let names: Vec<&str> = tools.tools.iter().map(|t| t.name.as_ref()).collect();
     assert!(names.contains(&"memory_create"), "tools: {names:?}");
     assert!(names.contains(&"subagent_start"), "tools: {names:?}");
+    assert!(names.contains(&"settings_get"), "tools: {names:?}");
+    assert!(names.contains(&"settings_set"), "tools: {names:?}");
 
     let created = client
         .call_tool(

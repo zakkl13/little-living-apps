@@ -135,6 +135,70 @@ fn lock_field(body: &str, key: &str) -> Option<String> {
         .map(|(_, v)| v.trim().trim_matches('"').to_string())
 }
 
+/// The curated package files carried into a workspace's `.lila/` as the worker's design reference.
+/// `tokens.css` is included (unlike the scaffold, which sinks it straight into the app) so a look
+/// change is self-contained — the worker installs `.lila/tokens.css` into the stack without needing
+/// catalog access. Mirrors the set `stacks/*/scaffold.sh` installs at first render.
+pub const DESIGN_PACKAGE_FILES: &[&str] = &[
+    "tokens.css",
+    "DESIGN.md",
+    "USAGE.md",
+    "components.html",
+    "components.manifest.json",
+    "design-tokens.json",
+];
+
+/// Apply an owner-chosen design `brand` to a scaffolded workspace, in-process — the **stack-agnostic**
+/// half of a look change. It resolves the brand against the catalog, refreshes `<workspace>/.lila/`
+/// with the system's full curated package, and rewrites `<workspace>/design.lock` with
+/// `source = "chosen"`. Returns the new lock.
+///
+/// It deliberately does NOT touch any stylesheet / token-sink path: where tokens actually live is the
+/// stack's business, so a worker installs `.lila/tokens.css` and re-fits the views. Errors if the app
+/// has no `design.lock` yet (backend-only / un-scaffolded — a look change has nothing to change) or the
+/// brand isn't in the catalog.
+pub fn apply_design(workspace: &Path, brand: &str) -> anyhow::Result<DesignLock> {
+    let lock_path = workspace.join("design.lock");
+    if !lock_path.exists() {
+        return Err(anyhow!(
+            "this app has no locked look yet (nothing user-visible to restyle) — ship a screen first"
+        ));
+    }
+    let dir = catalog_dir();
+    let draw = draw_system(&dir, brand)?;
+    let pkg = draw
+        .design_md
+        .parent()
+        .ok_or_else(|| anyhow!("catalog package for '{brand}' has no parent dir"))?;
+    copy_package_into_lila(workspace, pkg)?;
+
+    let lock = DesignLock {
+        brand: draw.brand,
+        pool: draw.pool,
+        source: "chosen".to_string(),
+        seed: draw.seed,
+        commit: catalog_commit(&dir),
+    };
+    std::fs::write(&lock_path, lock.to_toml())
+        .with_context(|| format!("writing {}", lock_path.display()))?;
+    Ok(lock)
+}
+
+/// Copy a system's curated package ([`DESIGN_PACKAGE_FILES`]) into `<workspace>/.lila/`, creating it if
+/// needed. Missing files in the package are skipped (older systems may lack one).
+fn copy_package_into_lila(workspace: &Path, pkg: &Path) -> anyhow::Result<()> {
+    let lila = workspace.join(".lila");
+    std::fs::create_dir_all(&lila).with_context(|| format!("creating {}", lila.display()))?;
+    for f in DESIGN_PACKAGE_FILES {
+        let src = pkg.join(f);
+        if src.exists() {
+            std::fs::copy(&src, lila.join(f))
+                .with_context(|| format!("copying {f} into .lila/"))?;
+        }
+    }
+    Ok(())
+}
+
 /// Resolve the catalog dir (`design/systems`): CWD first, then the crate manifest dir.
 pub fn catalog_dir() -> PathBuf {
     let from_cwd = std::env::current_dir()
@@ -367,5 +431,46 @@ mod tests {
         };
         let parsed = DesignLock::parse(&lock.to_toml()).expect("parse");
         assert_eq!(lock, parsed);
+    }
+
+    fn seed_default_lock(ws: &Path) {
+        let lock = DesignLock {
+            brand: "default".into(),
+            pool: Pool::Default,
+            source: "default".into(),
+            seed: 1,
+            commit: String::new(),
+        };
+        std::fs::write(ws.join("design.lock"), lock.to_toml()).unwrap();
+    }
+
+    #[test]
+    fn apply_design_swaps_lila_and_relocks_chosen() {
+        let ws = tempfile::tempdir().expect("tmp workspace");
+        seed_default_lock(ws.path()); // a scaffolded app's starting state: a blind default lock
+
+        let lock = apply_design(ws.path(), "stripe").expect("apply stripe");
+        assert_eq!(lock.brand, "stripe");
+        assert_eq!(lock.source, "chosen", "an owner pick re-locks as chosen");
+
+        // The on-disk lock reflects the swap and the curated package is staged for the worker to fit.
+        let on_disk =
+            DesignLock::parse(&std::fs::read_to_string(ws.path().join("design.lock")).unwrap())
+                .unwrap();
+        assert_eq!(on_disk, lock);
+        assert!(
+            ws.path().join(".lila/tokens.css").exists(),
+            "tokens.css staged in .lila for the stack-fit"
+        );
+        assert!(ws.path().join(".lila/DESIGN.md").exists());
+    }
+
+    #[test]
+    fn apply_design_requires_an_existing_lock() {
+        let ws = tempfile::tempdir().expect("tmp workspace");
+        assert!(
+            apply_design(ws.path(), "stripe").is_err(),
+            "no design.lock (un-scaffolded / backend-only) must error, not silently theme"
+        );
     }
 }
