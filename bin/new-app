@@ -72,7 +72,7 @@ eval "$(cd "$REPO_DIR" && "$LILA_BIN" stack "$LILA_STACK")" ||
 # A blind `random` is bounded to the safe default pool by `lila design draw`; a `<brand>` pin reaches
 # any system. The chosen system + its DESIGN.md path are exported into the scaffold env so the stack's
 # render turns it into real tokens and writes design.lock. Stacks with no [design] block skip this.
-LILA_DESIGN_BRAND='' LILA_DESIGN_FILE='' LILA_DESIGN_POOL='' LILA_DESIGN_SOURCE='' LILA_DESIGN_SEED='' LILA_DESIGN_COMMIT=''
+LILA_DESIGN_BRAND='' LILA_DESIGN_FILE='' LILA_DESIGN_DIR='' LILA_DESIGN_POOL='' LILA_DESIGN_SOURCE='' LILA_DESIGN_SEED='' LILA_DESIGN_COMMIT=''
 if [[ -n "${LILA_STACK_DESIGN_TOKENS:-}" ]]; then
   log "Drawing a design system (LILA_DESIGN=$LILA_DESIGN)"
   eval "$(cd "$REPO_DIR" && "$LILA_BIN" design draw "$LILA_DESIGN")" ||
@@ -84,7 +84,7 @@ fi
 # Run the stack's scaffold body as the service user, in the app dir, with the framework's variables in
 # the environment. The stack owns everything app-specific (install steps, generators, post-tweaks).
 # When the stack opts into design, the LILA_DESIGN_* draw + LILA_BIN are passed through so its render
-# can emit tokens via `lila design tokens` and write design.lock.
+# can copy the system's curated tokens.css + reference package (LILA_DESIGN_DIR) and write design.lock.
 log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
 ( cd "$APP_DIR" && sudo -u "$SERVICE_USER" -H \
     env LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
@@ -92,6 +92,7 @@ log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
         SERVICE_USER="$SERVICE_USER" MISE="$MISE" LILA_BIN="$LILA_BIN" \
         LILA_STACK_DESIGN_TOKENS="${LILA_STACK_DESIGN_TOKENS:-}" \
         LILA_DESIGN_BRAND="$LILA_DESIGN_BRAND" LILA_DESIGN_FILE="$LILA_DESIGN_FILE" \
+        LILA_DESIGN_DIR="$LILA_DESIGN_DIR" \
         LILA_DESIGN_POOL="$LILA_DESIGN_POOL" LILA_DESIGN_SOURCE="$LILA_DESIGN_SOURCE" \
         LILA_DESIGN_SEED="$LILA_DESIGN_SEED" LILA_DESIGN_COMMIT="$LILA_DESIGN_COMMIT" \
     bash "$LILA_STACK_SCAFFOLD" )
