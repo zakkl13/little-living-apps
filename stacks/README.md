@@ -96,17 +96,20 @@ framework may draw blindly) ⊂ `browsable` (the curated slice the design skill 
 
 The active choice is `LILA_DESIGN` (default `random`): `random` (blind draw from the **default** pool),
 `random:<seed>` (reproducible), or `<brand>` (pin any system from any pool). At standup `bin/new-app`
-resolves it with `lila design draw` and passes the chosen `DESIGN.md` into the scaffold env; the stack's
-`scaffold.sh` then **renders** it:
+resolves it with `lila design draw` and passes the chosen system's package dir into the scaffold env;
+the stack's `scaffold.sh` then **installs the curated baseline** (it does NOT re-derive tokens or ship a
+hand-written component layer):
 
-- token extraction is stack-neutral — `lila design tokens <DESIGN.md>` emits CSS custom properties (+ a
-  dark-mode block) into the stack's `tokens_path`;
-- the **component layer** (buttons, inputs, card, nav, empty-state, list-row) is the stack's own,
-  authored once in its idiom and token-referencing — identical across systems, only the tokens differ;
+- upstream's machine-readable **`tokens.css`** is copied verbatim into the stack's `tokens_path` (the
+  token sink agents paste/reference via `var(--name)`);
+- the rest of the curated package — `DESIGN.md`, `USAGE.md`, `components.html`, `components.manifest.json`,
+  `design-tokens.json` — is copied into the app's **`.lila/`** as the agent's reference; the worker
+  **adapts** those reference components into the stack's idiom (ERB for `rails-pwa`) per the system's own
+  `USAGE.md`, rather than inheriting a pre-built component layer;
 - the scaffold writes a committed **`design.lock`** at the app root (the active brand + the
-  selection-flow `source`: `default` | `invited` | `chosen` | `pinned`) and copies the active spec to
-  `.lila/DESIGN.md`. The look is **locked for the app's life** — the scaffold never rerolls an existing
-  lock; only the `design-system` skill (a user-driven selection) rewrites it.
+  selection-flow `source`: `default` | `invited` | `chosen` | `pinned`). The look is **locked for the
+  app's life** — the scaffold never rerolls an existing lock; only the `design-system` skill (a
+  user-driven selection) rewrites it.
 
 The block drives three generic consumers, all of which **no-op when it's absent**: the `design-system`
 skill (where to write/edit + how to apply), the worker `AGENTS.md` (the `apply` fragment + the design

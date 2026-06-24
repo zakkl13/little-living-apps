@@ -60,11 +60,6 @@ pub enum DesignAction {
         /// `random`, `random:<seed>`, or a `<brand>` pin.
         choice: String,
     },
-    /// Render a system's `DESIGN.md` into `tokens.css` (CSS custom properties + dark mode) on stdout.
-    Tokens {
-        /// Path to a `DESIGN.md`.
-        file: String,
-    },
     /// List catalog systems (brand · category · voice) for guided selection. Defaults to the
     /// `browsable` pool (what the design skill offers on request).
     List {

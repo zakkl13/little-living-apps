@@ -433,10 +433,11 @@ pub fn looks_designed(profile: &StackProfile, name: &str) -> Check {
 
 fn grade_design(ws: &Path, tokens_rel: &str) -> CheckOutcome {
     let Ok(tokens) = std::fs::read_to_string(ws.join(tokens_rel)) else {
-        return CheckOutcome::fail(format!("{tokens_rel} missing (nothing rendered)"));
+        return CheckOutcome::fail(format!("{tokens_rel} missing (nothing installed)"));
     };
-    if !tokens.contains("--color-") {
-        return CheckOutcome::fail(format!("{tokens_rel} defines no --color-* tokens"));
+    // Open Design's curated tokens.css always defines the schema's `--accent` on `:root`.
+    if !tokens.contains("--accent") {
+        return CheckOutcome::fail(format!("{tokens_rel} defines no --accent token"));
     }
     if read_design_lock(ws).is_none() {
         return CheckOutcome::fail("no readable design.lock (look not locked)");

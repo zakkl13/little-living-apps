@@ -72,42 +72,42 @@ fi
 log "Preparing databases"
 RAILS_ENV=development "$MISE" exec -- bin/rails db:prepare
 
-# --- 4. Render the locked design system into a real baseline -----------------------------------
-# Turns the drawn Open Design system (LILA_DESIGN_FILE) into real tokens + a component layer the app
-# starts with, and writes design.lock (the active system + the selection-flow state). Idempotent and
-# STABLE: if design.lock already exists we DO NOT re-render or reroll — the look is locked for life and
-# only the design skill (a user-driven selection) rewrites it. No-ops if the stack didn't opt in or no
-# system was drawn (e.g. a stack with no [design] block).
+# --- 4. Install the locked design system's curated baseline ------------------------------------
+# Copies the drawn Open Design system's CURATED assets (LILA_DESIGN_DIR) into the app: upstream's
+# machine-readable tokens.css becomes the app's token sink, and the rest of the package (DESIGN.md,
+# USAGE.md, components.html + manifest, design-tokens.json) is carried into .lila/ as the worker's
+# reference — the agent adapts those reference components to ERB per the system's own USAGE.md. We do
+# NOT generate tokens or ship a hand-written component layer. Writes design.lock (the active system +
+# the selection-flow state). Idempotent and STABLE: if design.lock already exists we DO NOT re-copy or
+# reroll — the look is locked for life; only the design skill (a user-driven selection) rewrites it.
+# No-ops if the stack didn't opt in or no system was drawn.
 render_design() {
-  local stack_dir styles tokens
-  stack_dir="$(cd "$(dirname "$0")" && pwd)"
-  styles="$APP_DIR/app/assets/stylesheets"
-
-  if [[ -z "${LILA_DESIGN_FILE:-}" || -z "${LILA_STACK_DESIGN_TOKENS:-}" ]]; then
+  local tokens layout pkg
+  if [[ -z "${LILA_DESIGN_DIR:-}" || -z "${LILA_STACK_DESIGN_TOKENS:-}" ]]; then
     log "No design system drawn — skipping the design baseline"; return 0
   fi
   if [[ -f "$APP_DIR/design.lock" ]]; then
     log "design.lock present — keeping the locked look (no reroll)"; return 0
   fi
 
-  log "Rendering design system '$LILA_DESIGN_BRAND' into tokens + components"
+  log "Installing curated design system '$LILA_DESIGN_BRAND' (Open Design package)"
   tokens="$APP_DIR/$LILA_STACK_DESIGN_TOKENS"
-  mkdir -p "$(dirname "$tokens")" "$styles" "$APP_DIR/app/views/components" "$APP_DIR/.lila"
+  mkdir -p "$(dirname "$tokens")" "$APP_DIR/.lila"
 
-  # Tokens: the stack-neutral render (CSS custom properties + dark mode) via the lila binary.
-  "$LILA_BIN" design tokens "$LILA_DESIGN_FILE" > "$tokens"
-  # Component layer + base element styles: hand-written, token-referencing, identical across systems.
-  cp "$stack_dir/design/components.css" "$styles/components.css"
-  cp "$stack_dir/design/base.css" "$styles/base.css"
-  cp "$stack_dir"/design/components/*.html.erb "$APP_DIR/app/views/components/"
-  # Carry the active system's full spec into the app so the worker + design skill can read its own
-  # "Do's and Don'ts" (§9 anti-patterns) without the framework catalog mounted.
-  cp "$LILA_DESIGN_FILE" "$APP_DIR/.lila/DESIGN.md"
+  # Upstream's curated, machine-readable tokens.css is the app's token sink (agents paste its :root
+  # block and reference var(--name)). Copied verbatim — not generated.
+  cp "$LILA_DESIGN_DIR/tokens.css" "$tokens"
+  # Carry the rest of the curated package into .lila/ as the worker + design skill's reference (its
+  # visual intent + anti-patterns, the reference components, the structured tokens).
+  for f in DESIGN.md USAGE.md components.html components.manifest.json design-tokens.json; do
+    [[ -f "$LILA_DESIGN_DIR/$f" ]] && cp "$LILA_DESIGN_DIR/$f" "$APP_DIR/.lila/$f"
+  done
 
-  # Link the stylesheets (Propshaft resolves each logical name to its fingerprinted file).
-  local layout="$APP_DIR/app/views/layouts/application.html.erb"
+  # Link the token sheet (Propshaft resolves the logical name to its fingerprinted file). The app's
+  # own component CSS is built by the agent on top of these tokens, per .lila/USAGE.md.
+  layout="$APP_DIR/app/views/layouts/application.html.erb"
   if [[ -f "$layout" ]] && ! grep -q 'stylesheet_link_tag "tokens"' "$layout"; then
-    sed -i 's|</head>|    <%= stylesheet_link_tag "tokens", "components", "base" %>\n  </head>|' "$layout"
+    sed -i 's|</head>|    <%= stylesheet_link_tag "tokens" %>\n  </head>|' "$layout"
   fi
 
   # The lock: the active system + the selection-flow state machine (source=default for a blind draw,
@@ -123,10 +123,9 @@ LOCK
   # Commit the baseline if this is already a checkpointed repo; during the initial scaffold the tree is
   # still untracked and the worker's scaffold commit will include these files.
   if git -C "$APP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 && [[ -n "$(git -C "$APP_DIR" log -1 2>/dev/null)" ]]; then
-    git -C "$APP_DIR" add design.lock .lila/DESIGN.md "$LILA_STACK_DESIGN_TOKENS" \
-      app/assets/stylesheets/components.css app/assets/stylesheets/base.css \
-      app/views/components app/views/layouts/application.html.erb 2>/dev/null || true
-    git -C "$APP_DIR" commit -m "Render '$LILA_DESIGN_BRAND' design baseline (tokens + components)" >/dev/null 2>&1 || true
+    git -C "$APP_DIR" add design.lock .lila "$LILA_STACK_DESIGN_TOKENS" \
+      app/views/layouts/application.html.erb 2>/dev/null || true
+    git -C "$APP_DIR" commit -m "Install '$LILA_DESIGN_BRAND' design baseline (curated tokens + reference)" >/dev/null 2>&1 || true
   fi
 }
 render_design

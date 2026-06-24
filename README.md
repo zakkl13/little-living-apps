@@ -228,8 +228,10 @@ to add your own.
 **A safe design system, picked for you — and yours to change.** Each instance starts on a real, coherent
 design system drawn from a **vendored catalog of [Open Design](https://github.com/nexu-io/open-design)
 systems** (`design/systems/`, Apache-2.0, see [`design/systems/PROVENANCE`](design/systems/PROVENANCE)) —
-rendered into real tokens + a component layer at standup, so even a zero-effort app looks *designed*, not
-like raw Rails or AI slop. The framework only ever draws *blindly* from a tiny pool of safe neutrals, so
+each system's curated package (machine-readable `tokens.css` + reference components) installed at standup
+and adapted into the app, so it builds on a real design baseline instead of raw Rails or AI slop. lila
+ships no design code of its own — it uses Open Design's curated assets directly. The framework only ever
+draws *blindly* from a tiny pool of safe neutrals, so
 no fresh app can land on a catastrophic look; after the first screen ships the agent offers — once — to
 pick a different look, and you can change it anytime ("make it warmer", "something like Stripe"). Pin one
 outright with `LILA_DESIGN=<brand>` (any of the 150 systems) or `random` (the default). lila imposes no

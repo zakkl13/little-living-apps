@@ -4,15 +4,12 @@
 //! render; the shell just consumes the `LILA_DESIGN_*` assignments and the rendered `tokens.css`.
 
 use crate::cli::DesignAction;
-use crate::design::{
-    Draw, Pool, catalog_commit, catalog_dir, draw_system, load_index, render_tokens_css,
-};
+use crate::design::{Draw, Pool, catalog_commit, catalog_dir, draw_system, load_index};
 
 /// Dispatch a `lila design` action. Exit 0 on success, 1 on failure.
 pub fn run(action: DesignAction) -> i32 {
     match action {
         DesignAction::Draw { choice } => draw(&choice),
-        DesignAction::Tokens { file } => tokens(&file),
         DesignAction::List { pool } => list(pool.as_deref().unwrap_or("browsable")),
     }
 }
@@ -53,29 +50,23 @@ fn draw(choice: &str) -> i32 {
 }
 
 fn print_draw(d: &Draw, commit: &str) {
+    // The system's vendored package dir — the scaffold copies its curated tokens.css + reference
+    // assets from here (parent of DESIGN.md).
+    let dir = d
+        .design_md
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     println!("{}", assign("LILA_DESIGN_BRAND", &d.brand));
     println!(
         "{}",
         assign("LILA_DESIGN_FILE", &d.design_md.to_string_lossy())
     );
+    println!("{}", assign("LILA_DESIGN_DIR", &dir));
     println!("{}", assign("LILA_DESIGN_POOL", d.pool.as_str()));
     println!("{}", assign("LILA_DESIGN_SOURCE", &d.source));
     println!("{}", assign("LILA_DESIGN_SEED", &d.seed.to_string()));
     println!("{}", assign("LILA_DESIGN_COMMIT", commit));
-}
-
-/// Render a `DESIGN.md` into `tokens.css` on stdout.
-fn tokens(file: &str) -> i32 {
-    match std::fs::read_to_string(file) {
-        Ok(body) => {
-            print!("{}", render_tokens_css(&body));
-            0
-        }
-        Err(e) => {
-            eprintln!("could not read design file '{file}': {e}");
-            1
-        }
-    }
 }
 
 /// `KEY='value'` with single quotes escaped so the line is safe to `eval` (mirrors `commands::stack`).
@@ -90,18 +81,13 @@ mod tests {
     use crate::cli::DesignAction;
 
     #[test]
-    fn draw_and_tokens_succeed_for_a_real_system() {
+    fn draw_succeeds_for_a_real_system() {
         assert_eq!(
             run(DesignAction::Draw {
                 choice: "random:1".into()
             }),
             0
         );
-        let file = catalog_dir()
-            .join("default/DESIGN.md")
-            .to_string_lossy()
-            .into_owned();
-        assert_eq!(run(DesignAction::Tokens { file }), 0);
     }
 
     #[test]

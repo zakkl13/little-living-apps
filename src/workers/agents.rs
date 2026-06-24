@@ -76,17 +76,19 @@ files outside your scope, **stop and report back** rather than straying."####;
 /// verdict is the independent `looks_designed` eval grader. Per the repo's evidence-not-claims bar,
 /// "looks great" proves nothing: the check must emit CONCRETE signals.
 const WORKER_DESIGN_RUBRIC: &str = r####"## Also validate the design (this app has a locked look)
-This app ships a **locked design system** (`design.lock`; the brand's full spec is at `.lila/DESIGN.md`)
-rendered into tokens + a component layer. When your change is user-visible, your self-validation must
-also show it stayed *within* the system — with concrete evidence, never a bare "looks good":
+This app ships a **locked design system** — the curated Open Design package under `.lila/` (read
+`.lila/USAGE.md` then `.lila/DESIGN.md`), with upstream's `tokens.css` as the token sink. When your
+change is user-visible, your self-validation must also show it stayed *within* the system — with
+concrete evidence, never a bare "looks good":
 
-1. **Tokens, not raw values.** Prove your CSS/ERB references the tokens, not hardcoded colors/spacing:
-   `! grep -REn "#[0-9a-fA-F]{3,6}" app/views app/assets/stylesheets/*.css` should find nothing new
-   you added outside `tokens.css` (report the grep result).
-2. **No §9 anti-patterns.** Read the "Do's and Don'ts" section of `.lila/DESIGN.md` and confirm your UI
-   commits none of *that brand's* listed forbidden patterns/words.
-3. **Real states + a11y floor.** Real empty/loading/error states (use the `components/empty_state`
-   partial), an SVG icon set (never emoji as icons), the type scale respected, and AA contrast on text.
+1. **Tokens, not raw values.** Prove your CSS/ERB references the tokens (`var(--accent)`, …), not
+   hardcoded colors/spacing: `! grep -REn "#[0-9a-fA-F]{3,6}" app/views app/assets/stylesheets`
+   (excluding `tokens.css`) should find nothing new you added (report the grep result).
+2. **No anti-patterns.** Read the "Do's and Don'ts" of `.lila/DESIGN.md` and confirm your UI commits
+   none of *that brand's* listed forbidden patterns/words; reuse a recipe from `.lila/components.html`
+   before inventing a control.
+3. **Real states + a11y floor.** Real empty/loading/error states, an SVG icon set (never emoji as
+   icons), the type scale respected, and AA contrast on text.
 4. Say in your summary which system is locked and that the screenshot adheres to it — backed by the
    grep result above and what you actually see in the image, not an adjective."####;
 

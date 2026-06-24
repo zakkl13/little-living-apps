@@ -6,10 +6,18 @@ systems on a fixed section schema (visual theme, color, typography, components, 
 do's/don'ts, responsive, agent guide).
 
 - Upstream:   https://github.com/nexu-io/open-design
-- Path:       design-systems/<brand>/DESIGN.md
+- Path:       design-systems/<brand>/
 - Commit:     f4fe5ad7579b81f9722f6db051d9768abc570577
-- Vendored:   150 systems (every `DESIGN.md` present at that commit)
+- Vendored:   150 systems, each as its full curated agent package — `DESIGN.md`, `USAGE.md`,
+              `tokens.css`, `design-tokens.json`, `components.html`, `components.manifest.json`,
+              `manifest.json`, `tailwind-v4.css` (copied verbatim). We skip only `preview/` (HTML
+              preview pages), `source/` (audit evidence), and the localized `DESIGN-*.md` translations.
 - License:    Apache License 2.0 — see LICENSE.upstream (copied from upstream at the pinned commit)
+
+We use upstream's curated `tokens.css` (the machine-readable token bindings agents paste verbatim) and
+`components.html` reference markup DIRECTLY — lila does NOT re-derive tokens or hand-author a component
+layer. The render simply copies these curated assets into the app; the agent adapts the reference
+components to the stack's idiom per the system's own `USAGE.md`.
 
 ## What lila contributes (and what it does NOT)
 
