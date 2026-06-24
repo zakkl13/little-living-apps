@@ -5,14 +5,14 @@ designs — the "how" is deliberately left open.
 
 ## App observability
 
-Give the apps the agent team builds a first-class observability capability — the way an engineer
+Give the apps the agent builds a first-class observability capability — the way an engineer
 leans on Datadog and its dashboards to understand and maintain a running service.
 
 Two halves:
 
 1. **Instrument** — apps emit logs and metrics about their own runtime behavior (latency, error
    rates, unexpected/unhandled errors, key product flows).
-2. **Review** — the agent team can read that instrumentation to track and understand how the app is
+2. **Review** — the agent can read that instrumentation to track and understand how the app is
    actually behaving in production, the way a human would scan an APM dashboard.
 
 The point is to close the loop on "living": today the team is largely blind to runtime behavior
