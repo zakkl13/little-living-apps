@@ -42,7 +42,9 @@ INSTANCE_ENV="/etc/lila/$INSTANCE.env"
 APP_DIR="${WORKSPACE_DIR:-/srv/$INSTANCE}"
 # APP_PORT is cosmetic here (the template unit reads ${APP_PORT} from the env file); source it from the
 # instance's env file when present so the log/heredoc report the real port, else fall back to 3000.
-read_env() { grep -E "^$1=" "$INSTANCE_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"'\''' ; }
+# Tolerant: a missing key (grep finds nothing) must yield empty, not a non-zero exit that `set -e`
+# would turn into a hard abort — instance env files legitimately omit optional keys (e.g. LILA_DESIGN).
+read_env() { grep -E "^$1=" "$INSTANCE_ENV" 2>/dev/null | cut -d= -f2- | tr -d '"'\''' || true ; }
 APP_PORT="${APP_PORT:-$(read_env APP_PORT)}"
 APP_PORT="${APP_PORT:-3000}"
 DOMAIN="${LILA_DOMAIN:-$(read_env LILA_DOMAIN)}"
