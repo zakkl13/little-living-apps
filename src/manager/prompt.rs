@@ -95,6 +95,23 @@ To attach an image to a message, put `ATTACH: /absolute/path.png` on its own lin
 Each ATTACH line is stripped from the text and its image is sent to the user alongside it. Only
 attach paths a worker actually reported in its summary — never guess or invent one."#;
 
+/// The manager's design-flow policy — included in its AGENTS.md only when the active stack ships a
+/// design system. This is the HUMAN-facing half of the feature: the manager (the only thing that
+/// talks to the owner) learns the look exists, when to offer it, and how to change it. The per-turn
+/// context names the active look + ownership state ([`design_status_section`]); this is the standing
+/// policy over it.
+const DESIGN_FLOW: &str = r#"Design — the app's look (only for user-visible work; ignore it for backend tasks):
+This app has one locked design system. Your per-turn context names the active look and whether the
+owner has chosen it. The look is the app's identity — never change or reroll it on your own.
+- The one time you volunteer anything about taste: after the FIRST user-visible screen ships and the
+  owner still hasn't chosen a look, you may offer ONCE, casually and in their terms — e.g. "btw I gave
+  it a clean neutral look to start; want more personality? warm, editorial, bold, something like
+  Linear?" Offer at most once ever: check memory first, and once you've offered write a durable note so
+  you never ask again. A backend-only app gets no offer.
+- When the owner asks to change the look ("make it warmer", "something like Stripe", "freshen the
+  design"), hand it to a worker — it browses the catalog, proposes a couple of fitting options, and on
+  the owner's go-ahead re-renders and re-locks the look. Relay the options and the result in their terms."#;
+
 /// Live facts about the host this manager runs on (sourced from config, never hardcoded).
 #[derive(Debug, Clone)]
 pub struct RuntimeFacts {
@@ -104,6 +121,9 @@ pub struct RuntimeFacts {
     /// The active stack's "the app" fragment ([`crate::stack::StackProfile::manager_prompt`]); its
     /// `{workspace}`/`{service}` placeholders are filled from the facts above.
     pub stack_app: String,
+    /// Whether the active stack ships a design system (`[design]` block). Gates the [`DESIGN_FLOW`]
+    /// policy so backend-only stacks never hear about a look they don't have.
+    pub has_design: bool,
 }
 
 fn render_runtime(r: &RuntimeFacts) -> String {
@@ -132,14 +152,35 @@ fn render_runtime(r: &RuntimeFacts) -> String {
 
 /// The static AGENTS.md body written to the manager working directory at startup.
 pub fn build_agents_md(runtime: &RuntimeFacts) -> String {
-    [
-        CREED,
-        MANAGER_PERSONA,
-        HOW_YOU_WORK,
-        &render_runtime(runtime),
-        YOUR_TOOLS,
-    ]
-    .join("\n\n")
+    let runtime_section = render_runtime(runtime);
+    let mut parts: Vec<&str> = vec![CREED, MANAGER_PERSONA, HOW_YOU_WORK, &runtime_section];
+    if runtime.has_design {
+        parts.push(DESIGN_FLOW);
+    }
+    parts.push(YOUR_TOOLS);
+    parts.join("\n\n")
+}
+
+/// A per-turn note on the app's locked design system, read FRESH from `design.lock` in the workspace
+/// (the `source` field can change mid-session when the owner picks a look). `None` when the app has no
+/// design system — stack opted out, or not yet scaffolded — so the manager hears nothing about design
+/// it doesn't have. This is what lifts the design state up to the layer that talks to the owner.
+pub fn design_status_section(workspace_dir: &str) -> Option<String> {
+    let path = std::path::Path::new(workspace_dir).join("design.lock");
+    let lock = crate::design::DesignLock::parse(&std::fs::read_to_string(path).ok()?).ok()?;
+    let ownership = match lock.source.as_str() {
+        "chosen" => "the owner chose this look".to_string(),
+        "pinned" => "this look is pinned in config — treat it as the owner's choice".to_string(),
+        "invited" => "you already offered a look once and the owner didn't pick — do not offer again"
+            .to_string(),
+        _ => "a safe default was drawn; the owner has NOT chosen a look yet (you may offer once after \
+              a screen ships — see your design rules, and check memory so you never ask twice)"
+            .to_string(),
+    };
+    Some(format!(
+        "## Active design system\nThe app's locked look is **{}** — {ownership}.",
+        lock.brand
+    ))
 }
 
 /// The per-turn volatile header: always-loaded core memory (`system/`) + the archival/recall index.
@@ -155,4 +196,58 @@ pub fn build_context_header(mem: &MemFs) -> String {
         "## Core memory (system/, always loaded)\n{core}\n\n\
          ## Memory index (archival/ + recall/, pull with memory_view)\n{index}"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn facts(has_design: bool) -> RuntimeFacts {
+        RuntimeFacts {
+            app_public_url: String::new(),
+            workspace_dir: "/tmp/none".into(),
+            app_service_name: "lila-app@x".into(),
+            stack_app: "- the app at {workspace} ({service})".into(),
+            has_design,
+        }
+    }
+
+    #[test]
+    fn design_policy_only_when_the_stack_ships_a_design_system() {
+        assert!(build_agents_md(&facts(true)).contains("never change or reroll it on your own"));
+        assert!(!build_agents_md(&facts(false)).contains("Design — the app's look"));
+    }
+
+    #[test]
+    fn design_status_reads_the_lock_and_reflects_ownership() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path().to_string_lossy().into_owned();
+        assert!(
+            design_status_section(&ws).is_none(),
+            "no lock ⇒ no design note"
+        );
+
+        let write = |src: &str| {
+            std::fs::write(
+                dir.path().join("design.lock"),
+                format!("brand = \"warm-editorial\"\npool = \"default\"\nsource = \"{src}\"\nseed = 1\ncommit = \"x\"\n"),
+            )
+            .unwrap();
+        };
+        write("default");
+        let s = design_status_section(&ws).expect("status");
+        assert!(s.contains("warm-editorial") && s.contains("NOT chosen"));
+        write("chosen");
+        assert!(
+            design_status_section(&ws)
+                .unwrap()
+                .contains("owner chose this look")
+        );
+        write("pinned");
+        assert!(
+            design_status_section(&ws)
+                .unwrap()
+                .contains("pinned in config")
+        );
+    }
 }

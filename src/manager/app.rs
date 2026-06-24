@@ -303,6 +303,12 @@ impl App {
             .lock()
             .map(|m| build_context_header(&m))
             .unwrap_or_default();
+        // Lift the design state up to the manager (which has no file access): append the fresh
+        // design.lock status so it can offer/respect the owner's look choice. No-ops without a lock.
+        let header = match super::prompt::design_status_section(&self.cfg.workspace_dir) {
+            Some(status) => format!("{header}\n\n{status}"),
+            None => header,
+        };
         let input = self.turn_input(&event, request);
 
         let telemetry = self.telemetry.clone();
