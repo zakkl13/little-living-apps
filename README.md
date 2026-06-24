@@ -6,13 +6,13 @@
 
 Text it into being. Text it as it grows.
 
+<a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot to build a shower-thought app; an agent creates a phone app that captures ideas into a visual knowledge map, then ships a calmer dark mode after another text request." width="100%"></a>
+
 **One agent. One app. One host.**
 
-You text it; an agent builds a real app, ships it, and then lives on your own box maintaining it for good.
+You text; an agent builds a real app, ships it, then lives on the same box maintaining it as it grows.
 
-**Not an app builder. An app owner.** Welcome to the personal software era.
-
-<a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot to build a shower-thought app; an agent creates a phone app that captures ideas into a visual knowledge map, then ships a calmer dark mode after another text request." width="100%"></a>
+Welcome to the personal software era.
 
 [![ci](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
@@ -47,7 +47,7 @@ dependency list.
 The personal computer made the machine yours. The software on it didn't follow; it stayed
 mass-market, written for millions, and you bend to fit it.
 
-Agents change the economics. Software cheap enough to build for one person is finally worth building
+Agents change the economics. Software is finally worth building
 for one person. Not a SaaS you rent and mold yourself to, but an app shaped to exactly how you think,
 with an audience of one: you.
 
@@ -55,6 +55,11 @@ That's the era this is built for. You describe what you want, and an agent build
 alive on a box you own. The PC made computers personal. This makes software personal.
 
 ## Quick start
+
+You will need
+* a ChatGPT or Claude subscription
+* a VPS to run your app-agent on
+* a new telegram bot
 
 ### Let an agent set it up for you
 
