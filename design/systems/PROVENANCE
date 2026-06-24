@@ -1,18 +1,25 @@
-# Provenance — the design-system catalog is vendored, not authored here
+# Provenance — the design-system catalog is upstream's, fetched not committed
 
-The `design/systems/<brand>/DESIGN.md` files in this directory are vendored **verbatim** from the
-open-source **Open Design** project — the open Claude-Design alternative that ships brand-grade design
-systems on a fixed section schema (visual theme, color, typography, components, layout, depth,
-do's/don'ts, responsive, agent guide).
+The `design/systems/<brand>/` packages are taken **verbatim** from the open-source **Open Design**
+project — the open Claude-Design alternative that ships brand-grade design systems on a fixed section
+schema (visual theme, color, typography, components, layout, depth, do's/don'ts, responsive, agent
+guide).
 
 - Upstream:   https://github.com/nexu-io/open-design
 - Path:       design-systems/<brand>/
 - Commit:     f4fe5ad7579b81f9722f6db051d9768abc570577
-- Vendored:   150 systems, each as its full curated agent package — `DESIGN.md`, `USAGE.md`,
+- Catalog:    150 systems, each as its full curated agent package — `DESIGN.md`, `USAGE.md`,
               `tokens.css`, `design-tokens.json`, `components.html`, `components.manifest.json`,
               `manifest.json`, `tailwind-v4.css` (copied verbatim). We skip only `preview/` (HTML
               preview pages), `source/` (audit evidence), and the localized `DESIGN-*.md` translations.
 - License:    Apache License 2.0 — see LICENSE.upstream (copied from upstream at the pinned commit)
+
+**The heavy per-brand packages are NOT committed to this repo.** Only a safety-net subset is vendored
+in git — the default-pool neutrals (`default`, `friendly`, `warm-editorial`) plus `stripe` — so a
+blind `random` draw, the look-change baseline, and the tests all work offline with zero fetch. The
+remaining ~146 systems are pulled at standup from the pinned commit above by `bin/fetch-design-catalog`
+(bootstrap.sh runs it once), which is what lets an explicit `LILA_DESIGN=<brand>` pin reach any system.
+INDEX.md, this PROVENANCE, and LICENSE.upstream stay tracked — they are lila's curation, not bulk.
 
 We use upstream's curated `tokens.css` (the machine-readable token bindings agents paste verbatim) and
 `components.html` reference markup DIRECTLY — lila does NOT re-derive tokens or hand-author a component
@@ -33,9 +40,10 @@ curation layer; everything else is lifted from each file's own H1 / `> Category:
 
 This is a deliberate, reviewable bump — never an auto-sync. To refresh:
 
-1. `git clone https://github.com/nexu-io/open-design` and check out the new commit.
-2. Copy each `design-systems/<brand>/DESIGN.md` to `design/systems/<brand>/DESIGN.md`.
-3. Regenerate INDEX.md (re-run the vendoring step that produced it) and re-curate the `default` /
+1. Update the `Commit:` line above to the new upstream commit, and refresh `LICENSE.upstream`.
+2. Regenerate INDEX.md (re-run the vendoring step that produced it) and re-curate the `default` /
    `browsable` pools — never auto-promote a freshly-added system into a pool the framework draws from
    blindly.
-4. Update the `Commit:` line above and `LICENSE.upstream`.
+3. Refresh the committed safety-net subset to the new commit:
+   `FORCE=1 bin/fetch-design-catalog default friendly warm-editorial stripe`, then commit those dirs.
+   Everything else is pulled at standup from the new pinned commit — nothing else to copy by hand.

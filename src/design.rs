@@ -1,10 +1,13 @@
 //! The design-system catalog, pools, the safe-by-default draw, and the lock.
 //!
-//! The catalog is **vendored from Open Design** as each system's full curated agent package
+//! The catalog comes **from Open Design** as each system's full curated agent package
 //! (`design/systems/<brand>/` — `DESIGN.md`, `USAGE.md`, the machine-readable `tokens.css`,
-//! `design-tokens.json`, `components.html`, …; see `design/systems/PROVENANCE`). It is
-//! framework-generic — a design system is an abstract, stack-neutral bundle — so it lives once here,
-//! not per stack. lila does NOT re-derive tokens or author components: the per-stack render simply
+//! `design-tokens.json`, `components.html`, …; see `design/systems/PROVENANCE`). Only a safety-net
+//! subset is committed (the default pool + `stripe`); the rest of the 150 systems is pulled at standup
+//! by `bin/fetch-design-catalog` from the pinned commit, so a blind `random` draw works offline but a
+//! `<brand>` pin needs the fetch. It is framework-generic — a design system is an abstract,
+//! stack-neutral bundle — so it lives once here, not per stack. lila does NOT re-derive tokens or
+//! author components: the per-stack render simply
 //! copies upstream's curated `tokens.css` + reference components into the app. lila's contribution is
 //! the machinery *around* the catalog:
 //!

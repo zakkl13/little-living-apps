@@ -131,6 +131,15 @@ run_as "cd '$PW_TOOLING' && NODE_PATH='$PW_TOOLING/node_modules' '$MISE' exec --
 run_as "NODE_PATH='$PW_TOOLING/node_modules' '$MISE' exec -- node -e 'require(\"playwright\"); console.log(\"playwright require() OK via NODE_PATH\")'" \
   || die "Playwright is not require()-resolvable via NODE_PATH=$PW_TOOLING/node_modules — worker self-validation would fail."
 
+# --- 4c. Fetch the full Open Design catalog -----------------------------------------------------
+# Only the safety-net subset (default-pool neutrals + stripe) is vendored in git; the rest of the
+# 150-system catalog is pulled here at standup so an explicit LILA_DESIGN=<brand> pin can reach any
+# system. Non-fatal: a blind `random` draw is bounded to the committed default pool, so the app still
+# gets a design even if this can't reach GitHub — re-run bin/fetch-design-catalog later to backfill.
+log "Fetching the Open Design catalog (pinned commit; bin/fetch-design-catalog)"
+run_as "cd '$REPO_DIR' && bash bin/fetch-design-catalog" \
+  || log "WARN: design catalog fetch failed — blind draws still work from the committed default pool; rerun 'bin/fetch-design-catalog' to enable <brand> pins"
+
 # --- 5. Data dirs + workspace (owned by the service user) -------------------------------------
 # The host's first (primary) app is just instance "primary": it runs under the SAME systemd template
 # units as every additional bin/new-instance app (lila-{manager,app}@primary), serving /srv/primary

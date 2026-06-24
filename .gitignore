@@ -27,3 +27,13 @@
 # assets live in /docs and are committed; the staging tree is local-only (~510MB).
 /video-assets-staging/
 /video-assets-boxes/
+
+# Open Design catalog (~12MB of per-brand packages). Only the safety-net subset is committed — the
+# default-pool neutrals + stripe — so a blind `random` draw and the tests work offline with zero
+# fetch. The rest of the 150-system catalog is pulled at standup by bin/fetch-design-catalog (see
+# design/systems/PROVENANCE). INDEX.md / PROVENANCE / LICENSE.upstream stay tracked (lila's curation).
+/design/systems/*/
+!/design/systems/default/
+!/design/systems/friendly/
+!/design/systems/warm-editorial/
+!/design/systems/stripe/

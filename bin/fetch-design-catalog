@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# fetch-design-catalog — populate design/systems/<brand>/ with Open Design's curated packages at
+# the commit pinned in design/systems/PROVENANCE.
+#
+# The heavy per-brand assets are NOT vendored in git. Only the safety-net subset is committed (the
+# default-pool neutrals + stripe — see design/systems/INDEX.md), so a blind `random` draw and the
+# tests work offline with zero fetch. This script pulls the *rest* of the 150-system catalog at
+# standup, so an explicit `LILA_DESIGN=<brand>` pin can reach any system. bootstrap.sh runs it once;
+# re-run it by hand if you wipe the catalog or want to refresh after a PROVENANCE commit bump.
+#
+#   bin/fetch-design-catalog              # every brand listed in INDEX.md (skips ones already present)
+#   bin/fetch-design-catalog stripe ant   # just these brands
+#   FORCE=1 bin/fetch-design-catalog       # re-copy even brands already on disk
+#
+# Idempotent: a brand whose DESIGN.md already exists is skipped unless FORCE=1, so the committed
+# safety-net subset is never refetched.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SYSTEMS_DIR="$REPO_DIR/design/systems"
+UPSTREAM="https://github.com/nexu-io/open-design"
+# The curated files we vendor per brand (mirrors design/systems/PROVENANCE). Everything else upstream
+# ships — preview/ HTML, source/ audit evidence, the localized DESIGN-*.md translations — is skipped.
+FILES=(DESIGN.md USAGE.md tokens.css design-tokens.json components.html components.manifest.json manifest.json tailwind-v4.css)
+
+log() { printf '\033[1;34m[design]\033[0m %s\n' "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+[[ -f "$SYSTEMS_DIR/PROVENANCE" ]] || die "no $SYSTEMS_DIR/PROVENANCE"
+[[ -f "$SYSTEMS_DIR/INDEX.md" ]]   || die "no $SYSTEMS_DIR/INDEX.md"
+
+# The pinned upstream commit — the single source of truth for which catalog we vendor.
+COMMIT="$(grep -m1 'Commit:' "$SYSTEMS_DIR/PROVENANCE" | sed 's/.*Commit:[[:space:]]*//' | tr -d '[:space:]')"
+[[ -n "$COMMIT" ]] || die "no pinned 'Commit:' line in $SYSTEMS_DIR/PROVENANCE"
+
+# Which brands? CLI args win; otherwise every data row in INDEX.md (a row whose pool column is a
+# valid pool — mirrors the Rust parser in src/design.rs, skipping the header + separator).
+if [[ $# -gt 0 ]]; then
+  brands=("$@")
+else
+  # `while read` rather than `mapfile` so this runs on bash 3.2 (macOS) as well as Linux.
+  brands=()
+  while IFS= read -r b; do brands+=("$b"); done < <(awk -F'|' '
+    { b=$2; p=$4; gsub(/^[ \t]+|[ \t]+$/,"",b); gsub(/^[ \t]+|[ \t]+$/,"",p)
+      if (p=="default" || p=="browsable" || p=="full") print b }' "$SYSTEMS_DIR/INDEX.md")
+fi
+[[ ${#brands[@]} -gt 0 ]] || die "no brands to fetch (empty INDEX.md?)"
+
+# Only fetch what's actually missing (or everything, under FORCE).
+todo=()
+for b in "${brands[@]}"; do
+  if [[ "${FORCE:-}" == 1 || ! -f "$SYSTEMS_DIR/$b/DESIGN.md" ]]; then todo+=("$b"); fi
+done
+if [[ ${#todo[@]} -eq 0 ]]; then
+  log "catalog already populated (${#brands[@]} system(s) present) — nothing to fetch"
+  exit 0
+fi
+
+log "Fetching ${#todo[@]} design system(s) from Open Design @ ${COMMIT:0:12}"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+git -C "$tmp" init -q
+git -C "$tmp" remote add origin "$UPSTREAM"
+# Shallow-fetch exactly the pinned commit (GitHub serves any reachable SHA), then check it out.
+git -C "$tmp" fetch -q --depth 1 origin "$COMMIT" || die "could not fetch $COMMIT from $UPSTREAM"
+git -C "$tmp" checkout -q FETCH_HEAD
+
+src="$tmp/design-systems"
+[[ -d "$src" ]] || die "upstream layout changed: no design-systems/ at $COMMIT"
+
+missing=0
+for b in "${todo[@]}"; do
+  if [[ ! -d "$src/$b" ]]; then
+    echo "  ! $b — not present upstream @ $COMMIT (skipped)" >&2; missing=1; continue
+  fi
+  mkdir -p "$SYSTEMS_DIR/$b"
+  for f in "${FILES[@]}"; do
+    [[ -f "$src/$b/$f" ]] && cp "$src/$b/$f" "$SYSTEMS_DIR/$b/$f"
+  done
+done
+
+log "Done — installed ${#todo[@]} system(s) under design/systems/"
+[[ $missing -eq 0 ]] || die "some requested brands were missing upstream (see above)"
