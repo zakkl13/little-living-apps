@@ -10,6 +10,8 @@ Text it into being. Text it as it grows.
 
 You text it; an agent builds a real app, ships it, and then lives on your own box maintaining it for good.
 
+**Not an app builder. An app owner.** Welcome to the personal software era.
+
 <a href="docs/hero.mp4"><img src="docs/hero.gif" alt="Texting a Telegram bot to build a shower-thought app; an agent creates a phone app that captures ideas into a visual knowledge map, then ships a calmer dark mode after another text request." width="100%"></a>
 
 [![ci](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml)
@@ -31,14 +33,26 @@ The framework deals in **apps and functionality, not code**. You say what the ap
 ("build me a reading log", "add tags by genre", "filter the list") and the agents own every line,
 every deploy, and every change after that. You never open an editor. You never read a diff.
 
-"Living" is the point. The agent doesn't generate and leave. It keeps planning, remembering, and
-shipping against the *same* app, so next week's "add a chart" lands in the same place this week's
-reading log did.
+"Living" is the point. A builder hands you code and moves on; this stays and owns the upkeep. The
+agent doesn't generate and leave. It keeps planning, remembering, and shipping against the *same*
+app, so next week's "add a chart" lands in the same place this week's reading log did.
 
 The whole thing is small enough to keep in your head: **one agent, one app, one host you own.** It
 runs over a Telegram long-poll. No open ports, no public URL, no cloud bill from us, because there
 is no us. You bring the host, the bot, and your existing ChatGPT or Claude subscription. That's the
 dependency list.
+
+### The personal software era
+
+The personal computer made the machine yours. The software on it didn't follow; it stayed
+mass-market, written for millions, and you bend to fit it.
+
+Agents change the economics. Software cheap enough to build for one person is finally worth building
+for one person. Not a SaaS you rent and mold yourself to, but an app shaped to exactly how you think,
+with an audience of one: you.
+
+That's the era this is built for. You describe what you want, and an agent builds it and keeps it
+alive on a box you own. The PC made computers personal. This makes software personal.
 
 ## Quick start
 
@@ -189,10 +203,7 @@ same internal seams.
 instead of metered API billing, so the running cost is a plan you already pay for, not a meter
 ticking while agents work. **I recommend Codex (the default).** A ChatGPT subscription comes with a
 far more generous token allocation than a Claude plan, so Codex is the backend least likely to hit a
-ceiling mid-build. (Both backends consume comparable tokens per task: they now report **gross** input,
-fresh plus cache reads/creation, so the eval's per-task counts line up. An earlier ~50x
-Codex-vs-Claude gap was a measurement artifact, counting cache reads for Codex but not Claude, since
-fixed.) Claude adapts sharply and is a great choice, but its plan's lower token allocation bites first
+ceiling mid-build. Claude adapts sharply and is a great choice, but its plan's lower token allocation bites first
 when the workers get busy. Keeping both behind one seam means you can **swap on a live instance** with
 `/backend claude` (or `/backend codex`); it persists the choice and restarts clean, losing no memory.
 *Cost:* a ToS caveat on the Claude backend (below), and you watch concurrency if you run many
@@ -235,7 +246,7 @@ to add your own.
 design system drawn from a **vendored catalog of [Open Design](https://github.com/nexu-io/open-design)
 systems** (`design/systems/`, Apache-2.0, see [`design/systems/PROVENANCE`](design/systems/PROVENANCE)).
 Each system's curated package (machine-readable `tokens.css` plus reference components) is installed at
-standup and adapted into the app, so it builds on a real design baseline instead of raw Rails or AI slop.
+standup and adapted into the app, so it builds on a real design baseline instead of raw AI slop.
 lila ships no design code of its own; it uses Open Design's curated assets directly. The framework only
 ever draws *blindly* from a tiny pool of safe neutrals, so no fresh app can land on a catastrophic look.
 After the first screen ships, the agent offers (once) to pick a different look, and you can change it
