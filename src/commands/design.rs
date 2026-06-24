@@ -14,7 +14,7 @@ pub fn run(action: DesignAction) -> i32 {
     }
 }
 
-/// List the systems in `pool` (with nesting) as `brand · category · voice` rows for the design skill.
+/// List the systems in `pool` (with nesting) as `brand · category · voice` rows for the look-change flow.
 fn list(pool: &str) -> i32 {
     let Some(want) = Pool::parse(pool) else {
         eprintln!("unknown pool '{pool}' (want default | browsable | full)");

@@ -285,7 +285,7 @@ fn looks_designed_grader_over_the_rendered_rails_baseline() {
 
     let t = Builder::default().build(ws.clone(), tmp.path().join("m"));
     assert!(
-        run(&checks::looks_designed(&p, "designed"), &t),
+        run(&checks::looks_designed("designed"), &t),
         "the rendered baseline (tokens + lock, no raw hex) looks designed"
     );
 
@@ -297,19 +297,8 @@ fn looks_designed_grader_over_the_rendered_rails_baseline() {
     .unwrap();
     let slopped = Builder::default().build(ws, tmp.path().join("m"));
     assert!(
-        !run(&checks::looks_designed(&p, "designed"), &slopped),
+        !run(&checks::looks_designed("designed"), &slopped),
         "a raw hex outside tokens.css is flagged as slop"
-    );
-
-    // A stack with no [design] block no-ops (graceful opt-out).
-    let node = node_stack();
-    let tmp2 = tempfile::tempdir().unwrap();
-    let ws2 = tmp2.path().join("ws");
-    fixture::seed_stack(&node, &ws2, &BTreeMap::new()).unwrap();
-    let t3 = Builder::default().build(ws2, tmp2.path().join("m"));
-    assert!(
-        run(&checks::looks_designed(&node, "designed"), &t3),
-        "a stack that opts out of design passes the aesthetic axis trivially"
     );
 }
 

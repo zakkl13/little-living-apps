@@ -41,23 +41,8 @@ pub struct StackProfile {
     pub worker_prompt: String,
     /// The "the app" fragment spliced into the manager's runtime-environment section.
     pub manager_prompt: String,
-    /// The optional design contract: where this stack keeps its tokens + how a worker applies the
-    /// locked system in this stack's idiom. `None` ⇒ the stack opted out (the design skill + visual
-    /// check no-op for it, exactly like a stack that omits `[validate].prepare`).
-    pub design: Option<DesignSpec>,
     /// Absolute path to this stack's directory (`stacks/<name>/`).
     pub dir: PathBuf,
-}
-
-/// The per-stack design contract (`[design]` in `stack.toml`), parallel to `[validate]`.
-#[derive(Debug, Clone)]
-pub struct DesignSpec {
-    /// Canonical token sink the render writes and the design skill edits (e.g.
-    /// `app/assets/stylesheets/tokens.css`).
-    pub tokens_path: String,
-    /// The fragment (`design.md`) spliced into the worker `AGENTS.md`: how to apply tokens +
-    /// components in THIS stack's idiom. Read via the same `read_fragment` helper as the prompts.
-    pub apply_prompt: String,
 }
 
 /// The `stack.toml` contract, as parsed before fragment inlining.
@@ -71,14 +56,6 @@ struct StackToml {
     serve: ServeToml,
     validate: ValidateToml,
     prompt: PromptToml,
-    /// Optional: a stack with no `[design]` block opts out of the design system.
-    design: Option<DesignToml>,
-}
-
-#[derive(Deserialize)]
-struct DesignToml {
-    tokens_path: String,
-    apply: String,
 }
 
 #[derive(Deserialize)]
@@ -132,7 +109,6 @@ impl StackProfile {
             .with_context(|| format!("parsing stack contract {}", toml_path.display()))?;
         let worker_prompt = read_fragment(dir, &parsed.prompt.worker)?;
         let manager_prompt = read_fragment(dir, &parsed.prompt.manager)?;
-        let design = load_design(dir, parsed.design)?;
         Ok(Self {
             name: parsed.name,
             display: parsed.display,
@@ -145,7 +121,6 @@ impl StackProfile {
             probe_prepare: parsed.validate.prepare,
             worker_prompt,
             manager_prompt,
-            design,
             dir: dir.to_path_buf(),
         })
     }
@@ -153,17 +128,6 @@ impl StackProfile {
     /// This stack's pre-scaffolded eval fixture template (`stacks/<name>/eval/fixture`).
     pub fn eval_fixture_dir(&self) -> PathBuf {
         self.dir.join("eval/fixture")
-    }
-}
-
-/// Resolve the optional `[design]` block into a [`DesignSpec`], inlining its `apply` fragment.
-fn load_design(dir: &Path, design: Option<DesignToml>) -> anyhow::Result<Option<DesignSpec>> {
-    match design {
-        Some(d) => Ok(Some(DesignSpec {
-            tokens_path: d.tokens_path,
-            apply_prompt: read_fragment(dir, &d.apply)?,
-        })),
-        None => Ok(None),
     }
 }
 
@@ -197,14 +161,6 @@ mod tests {
         assert!(p.manager_prompt.contains("{workspace}"));
         assert!(p.scaffold_script.ends_with("scaffold.sh"));
         assert!(p.eval_fixture_dir().join("bin/rails").exists());
-
-        // rails-pwa opts into the design system: tokens sink + an apply fragment.
-        let design = p.design.expect("rails-pwa has a [design] block");
-        assert_eq!(design.tokens_path, "app/assets/stylesheets/tokens.css");
-        assert!(
-            design.apply_prompt.contains("tokens"),
-            "apply fragment explains how to apply the tokens"
-        );
     }
 
     #[test]
@@ -218,10 +174,6 @@ mod tests {
         assert!(p.serve_env.is_empty());
         assert!(p.worker_prompt.contains("React"));
         assert!(p.manager_prompt.contains("{service}"));
-        assert!(
-            p.design.is_none(),
-            "node-react has no [design] block ⇒ opts out gracefully"
-        );
     }
 
     #[test]

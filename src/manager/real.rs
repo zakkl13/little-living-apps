@@ -46,7 +46,6 @@ fn seed_agents_md(cfg: &Config) -> anyhow::Result<String> {
         workspace_dir: cfg.workspace_dir.clone(),
         app_service_name: cfg.app_service_name.clone(),
         stack_app: profile.manager_prompt.clone(),
-        has_design: profile.design.is_some(),
     };
     let agents_md = build_agents_md(&runtime);
     std::fs::create_dir_all(&cfg.manager_dir)?;

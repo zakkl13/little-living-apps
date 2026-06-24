@@ -56,19 +56,12 @@ test_cmd    = "bin/rails test"
 health_path = "/up"
 prepare     = "bin/rails db:prepare"   # optional; omit if the app needs no preparation to boot
 
-# Prose fragments spliced verbatim into the agent prompts — the only stack-specific text.
+# Prose fragments spliced verbatim into the agent prompts — the only stack-specific text. Design
+# guidance, if a stack renders UI, lives in worker.md as prose (see "Design" below); it is NOT part of
+# the stack contract.
 [prompt]
 worker  = "worker.md"
 manager = "manager.md"
-
-# OPTIONAL design contract (parallel to [validate]). Opts the stack into the design system: where it
-# keeps its rendered tokens (the canonical sink the scaffold render writes + the design skill edits)
-# and the fragment that tells a worker how to apply the locked system in THIS stack's idiom. Omit the
-# whole block to opt out — the design skill, the design self-validation rubric, and the looks_designed
-# grader all no-op for the stack (graceful, exactly like omitting [validate].prepare).
-[design]
-tokens_path = "app/assets/stylesheets/tokens.css"
-apply       = "design.md"
 ```
 
 `node-react/stack.toml` is the same shape with no `[toolchain]`, `exec = "node server.js"`,
@@ -84,36 +77,36 @@ apply       = "design.md"
   app it is, how it reloads). Use the placeholders `{workspace}` and `{service}`; the framework fills
   them from the live runtime facts.
 
-## The design system (optional `[design]` block)
+## Design — framework-generic, not part of the stack contract
 
-A stack opts into the design system with the `[design]` block above. The **catalog** — the design
-systems themselves — is **framework-generic**, not per-stack: a design system is an abstract,
-stack-neutral bundle ("Linear-ish" reads the same in Rails or a SPA), so it lives once at
-`design/systems/<brand>/DESIGN.md` (vendored from [Open Design](https://github.com/nexu-io/open-design);
-see `design/systems/PROVENANCE`). Membership in three nested pools — `default` (the ~3 safe neutrals the
-framework may draw blindly) ⊂ `browsable` (the curated slice the design skill offers on request) ⊂
-`full` (all 150, reachable only by an explicit pin) — is recorded in `design/systems/INDEX.md`.
+The design system is **orthogonal to the stack**: a design system is an abstract, stack-neutral bundle
+("Linear-ish" reads the same in Rails or a SPA), so it is not a dimension of `stack.toml`. The
+**catalog** lives once at `design/systems/<brand>/DESIGN.md` (vendored from
+[Open Design](https://github.com/nexu-io/open-design); see `design/systems/PROVENANCE`). Membership in
+three nested pools — `default` (the ~3 safe neutrals the framework may draw blindly) ⊂ `browsable` (the
+curated slice offered on request) ⊂ `full` (all 150, reachable only by an explicit pin) — is recorded in
+`design/systems/INDEX.md`.
 
 The active choice is `LILA_DESIGN` (default `random`): `random` (blind draw from the **default** pool),
 `random:<seed>` (reproducible), or `<brand>` (pin any system from any pool). At standup `bin/new-app`
-resolves it with `lila design draw` and passes the chosen system's package dir into the scaffold env;
-the stack's `scaffold.sh` then **installs the curated baseline** (it does NOT re-derive tokens or ship a
-hand-written component layer):
+**always** resolves it with `lila design draw` and passes the chosen system's package dir into the
+scaffold env. A stack that renders UI consumes it in its own `scaffold.sh` — `rails-pwa` **installs the
+curated baseline** (it does NOT re-derive tokens or ship a hand-written component layer):
 
-- upstream's machine-readable **`tokens.css`** is copied verbatim into the stack's `tokens_path` (the
-  token sink agents paste/reference via `var(--name)`);
+- upstream's machine-readable **`tokens.css`** is copied verbatim into the app's token sink
+  (`app/assets/stylesheets/tokens.css` for `rails-pwa`; agents reference it via `var(--name)`);
 - the rest of the curated package — `DESIGN.md`, `USAGE.md`, `components.html`, `components.manifest.json`,
   `design-tokens.json` — is copied into the app's **`.lila/`** as the agent's reference; the worker
   **adapts** those reference components into the stack's idiom (ERB for `rails-pwa`) per the system's own
   `USAGE.md`, rather than inheriting a pre-built component layer;
 - the scaffold writes a committed **`design.lock`** at the app root (the active brand + the
   selection-flow `source`: `default` | `invited` | `chosen` | `pinned`). The look is **locked for the
-  app's life** — the scaffold never rerolls an existing lock; only the `design-system` skill (a
-  user-driven selection) rewrites it.
+  app's life** — the scaffold never rerolls an existing lock; only a user-driven selection rewrites it.
 
-The block drives three generic consumers, all of which **no-op when it's absent**: the `design-system`
-skill (where to write/edit + how to apply), the worker `AGENTS.md` (the `apply` fragment + the design
-self-validation rubric), and the `looks_designed` eval grader (what "uses tokens" means here).
+A stack whose `scaffold.sh` ignores the draw simply renders no tokens and writes no `design.lock`, and
+every design consumer falls quiet on its own: the worker's design guidance is just prose in its
+`worker.md`, the manager's design-flow policy never fires without a `design.lock` to read, and the
+`looks_designed` eval grader only runs on the design scenarios (pinned to `rails-pwa`).
 
 ## Eval fixture
 

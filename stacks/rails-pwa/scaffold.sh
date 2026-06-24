@@ -79,11 +79,12 @@ RAILS_ENV=development "$MISE" exec -- bin/rails db:prepare
 # reference — the agent adapts those reference components to ERB per the system's own USAGE.md. We do
 # NOT generate tokens or ship a hand-written component layer. Writes design.lock (the active system +
 # the selection-flow state). Idempotent and STABLE: if design.lock already exists we DO NOT re-copy or
-# reroll — the look is locked for life; only the design skill (a user-driven selection) rewrites it.
-# No-ops if the stack didn't opt in or no system was drawn.
+# reroll — the look is locked for life; only a user-driven selection rewrites it.
+# No-ops if no system was drawn.
 render_design() {
   local tokens layout pkg
-  if [[ -z "${LILA_DESIGN_DIR:-}" || -z "${LILA_STACK_DESIGN_TOKENS:-}" ]]; then
+  local tokens_rel="app/assets/stylesheets/tokens.css"
+  if [[ -z "${LILA_DESIGN_DIR:-}" ]]; then
     log "No design system drawn — skipping the design baseline"; return 0
   fi
   if [[ -f "$APP_DIR/design.lock" ]]; then
@@ -91,13 +92,13 @@ render_design() {
   fi
 
   log "Installing curated design system '$LILA_DESIGN_BRAND' (Open Design package)"
-  tokens="$APP_DIR/$LILA_STACK_DESIGN_TOKENS"
+  tokens="$APP_DIR/$tokens_rel"
   mkdir -p "$(dirname "$tokens")" "$APP_DIR/.lila"
 
   # Upstream's curated, machine-readable tokens.css is the app's token sink (agents paste its :root
   # block and reference var(--name)). Copied verbatim — not generated.
   cp "$LILA_DESIGN_DIR/tokens.css" "$tokens"
-  # Carry the rest of the curated package into .lila/ as the worker + design skill's reference (its
+  # Carry the rest of the curated package into .lila/ as the worker's design reference (its
   # visual intent + anti-patterns, the reference components, the structured tokens).
   for f in DESIGN.md USAGE.md components.html components.manifest.json design-tokens.json; do
     [[ -f "$LILA_DESIGN_DIR/$f" ]] && cp "$LILA_DESIGN_DIR/$f" "$APP_DIR/.lila/$f"
@@ -111,7 +112,7 @@ render_design() {
   fi
 
   # The lock: the active system + the selection-flow state machine (source=default for a blind draw,
-  # pinned for an explicit LILA_DESIGN=<brand>). The design skill is the only thing that rewrites it.
+  # pinned for an explicit LILA_DESIGN=<brand>). A user-driven selection is the only thing that rewrites it.
   cat > "$APP_DIR/design.lock" <<LOCK
 brand  = "${LILA_DESIGN_BRAND}"
 pool   = "${LILA_DESIGN_POOL}"
@@ -123,7 +124,7 @@ LOCK
   # Commit the baseline if this is already a checkpointed repo; during the initial scaffold the tree is
   # still untracked and the worker's scaffold commit will include these files.
   if git -C "$APP_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 && [[ -n "$(git -C "$APP_DIR" log -1 2>/dev/null)" ]]; then
-    git -C "$APP_DIR" add design.lock .lila "$LILA_STACK_DESIGN_TOKENS" \
+    git -C "$APP_DIR" add design.lock .lila "$tokens_rel" \
       app/views/layouts/application.html.erb 2>/dev/null || true
     git -C "$APP_DIR" commit -m "Install '$LILA_DESIGN_BRAND' design baseline (curated tokens + reference)" >/dev/null 2>&1 || true
   fi

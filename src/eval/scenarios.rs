@@ -143,8 +143,8 @@ pub fn scenarios() -> Vec<Scenario> {
     ]
 }
 
-/// The active design stack for the design scenarios: `rails-pwa` is the stack that ships a `[design]`
-/// block + a render, so the lock/tokens exist to grade.
+/// The stack the design scenarios run on: `rails-pwa`'s scaffold renders the locked system's tokens +
+/// writes `design.lock`, so the lock/tokens exist to grade.
 const DESIGN_STACK: &str = "rails-pwa";
 
 /// A `design.lock` workspace overlay, to plant the selection-flow starting state a scenario needs.
@@ -445,7 +445,7 @@ fn looks_designed_axis() -> Scenario {
         vec![
             workers_at_least(1),
             http_probe(&p, "/books", 200, "GET /books → 200"),
-            looks_designed(&p, "applied the locked design system (tokens, no raw hex)"),
+            looks_designed("applied the locked design system (tokens, no raw hex)"),
             design_lock_stable(),
             usage_within(Some(8), Some(5), None),
         ],
@@ -543,7 +543,7 @@ fn design_explicit_choice_relocks() -> Scenario {
     Scenario::new(
         "design-explicit-choice-relocks",
         Axis::Autonomy,
-        "The user asks to change the look ('make it warmer / something like Stripe'); the skill \
+        "The user asks to change the look ('make it warmer / something like Stripe'); a worker \
          proposes from the browsable pool, the user confirms, and the lock is rewritten with \
          source=chosen — and no further invitation ever fires.",
         &[

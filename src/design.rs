@@ -29,7 +29,7 @@ use anyhow::{Context, anyhow};
 pub enum Pool {
     /// The ~3 safe neutrals the framework may draw blindly.
     Default,
-    /// The curated slice the selection skill offers on request (includes the default systems).
+    /// The curated slice the look-change flow offers on request (includes the default systems).
     Browsable,
     /// Every vendored system; reachable only by an explicit `LILA_DESIGN=<brand>` pin.
     Full,

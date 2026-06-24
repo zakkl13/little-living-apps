@@ -61,7 +61,7 @@ pub enum DesignAction {
         choice: String,
     },
     /// List catalog systems (brand · category · voice) for guided selection. Defaults to the
-    /// `browsable` pool (what the design skill offers on request).
+    /// `browsable` pool (what the look-change flow offers on request).
     List {
         /// `default`, `browsable` (the default), or `full`.
         pool: Option<String>,

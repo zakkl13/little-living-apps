@@ -26,15 +26,9 @@ health_path = "/up"
 # Failure-tolerant pre-boot step the eval probe runs before serving (creates the dev SQLite DBs).
 prepare     = "bin/rails db:prepare"
 
-# Spliced verbatim into the agent prompts; the only stack-specific prose.
+# Spliced verbatim into the agent prompts; the only stack-specific prose. Any design guidance this
+# stack wants its workers to follow lives in worker.md as prose — design is a framework-generic concern,
+# not part of the stack contract.
 [prompt]
 worker  = "worker.md"
 manager = "manager.md"
-
-# Optional design contract (parallel to [validate]). Tells the framework where this stack keeps its
-# rendered tokens (the canonical sink the scaffold render writes and the design skill edits) and which
-# fragment explains how a worker applies the locked system in THIS stack's idiom. Omit the block to opt
-# out (the design skill + visual check then no-op for the stack).
-[design]
-tokens_path = "app/assets/stylesheets/tokens.css"
-apply       = "design.md"

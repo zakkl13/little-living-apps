@@ -418,16 +418,18 @@ wait $PID 2>/dev/null || true
 // THIS grader is the falsifiable, offline, reproducible floor: the app faithfully applied its *locked*
 // system rather than sprinkling slop. Per the repo's evidence-not-claims bar it asserts concrete
 // signals — tokens defined + referenced, the lock present, no raw hex outside `tokens.css` — not an
-// adjective. Stacks with no `[design]` block no-op (graceful, like the non-web gate in §J).
+// adjective. This grader is Rails-shaped (it reads `app/views` + `app/assets/stylesheets`); it only
+// runs on the design scenarios, which are pinned to the rails-pwa stack.
+
+/// The canonical Rails token sink the design baseline renders into.
+const RAILS_TOKENS_PATH: &str = "app/assets/stylesheets/tokens.css";
 
 /// The app cleanly applied its locked design system: tokens rendered + referenced, `design.lock`
 /// present, and no raw hex colors sprinkled into views/stylesheets (the canonical anti-slop signal).
-pub fn looks_designed(profile: &StackProfile, name: &str) -> Check {
-    let tokens_path = profile.design.as_ref().map(|d| d.tokens_path.clone());
+pub fn looks_designed(name: &str) -> Check {
     let name = name.to_string();
-    Check::new(name, move |t| match &tokens_path {
-        None => CheckOutcome::pass_with("stack opted out of the design system"),
-        Some(rel) => grade_design(&t.workspace_dir, rel),
+    Check::new(name, move |t| {
+        grade_design(&t.workspace_dir, RAILS_TOKENS_PATH)
     })
 }
 

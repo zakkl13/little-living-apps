@@ -68,29 +68,27 @@ eval "$(cd "$REPO_DIR" && "$LILA_BIN" stack "$LILA_STACK")" ||
   die "Unknown stack '$LILA_STACK' (expected a directory under $REPO_DIR/stacks/)."
 [[ -f "$LILA_STACK_SCAFFOLD" ]] || die "Stack '$LILA_STACK' scaffold script missing: $LILA_STACK_SCAFFOLD"
 
-# --- 0b. Draw a design system (only if the stack opts into the design contract) -----------------
-# A blind `random` is bounded to the safe default pool by `lila design draw`; a `<brand>` pin reaches
-# any system. The chosen system + its DESIGN.md path are exported into the scaffold env so the stack's
-# render turns it into real tokens and writes design.lock. Stacks with no [design] block skip this.
+# --- 0b. Draw a design system ------------------------------------------------------------------
+# Design is framework-generic, not a per-stack opt-in: every instance draws one. A blind `random` is
+# bounded to the safe default pool by `lila design draw`; a `<brand>` pin reaches any system. The chosen
+# system + its package dir are exported into the scaffold env so a stack that renders UI turns it into
+# real tokens and writes design.lock; a stack whose scaffold ignores it simply doesn't.
 LILA_DESIGN_BRAND='' LILA_DESIGN_FILE='' LILA_DESIGN_DIR='' LILA_DESIGN_POOL='' LILA_DESIGN_SOURCE='' LILA_DESIGN_SEED='' LILA_DESIGN_COMMIT=''
-if [[ -n "${LILA_STACK_DESIGN_TOKENS:-}" ]]; then
-  log "Drawing a design system (LILA_DESIGN=$LILA_DESIGN)"
-  eval "$(cd "$REPO_DIR" && "$LILA_BIN" design draw "$LILA_DESIGN")" ||
-    die "Could not resolve LILA_DESIGN='$LILA_DESIGN' against the catalog."
-  log "Active design: $LILA_DESIGN_BRAND (pool=$LILA_DESIGN_POOL, source=$LILA_DESIGN_SOURCE)"
-fi
+log "Drawing a design system (LILA_DESIGN=$LILA_DESIGN)"
+eval "$(cd "$REPO_DIR" && "$LILA_BIN" design draw "$LILA_DESIGN")" ||
+  die "Could not resolve LILA_DESIGN='$LILA_DESIGN' against the catalog."
+log "Active design: $LILA_DESIGN_BRAND (pool=$LILA_DESIGN_POOL, source=$LILA_DESIGN_SOURCE)"
 
 # --- 1. Scaffold the app (delegated to the active stack) ---------------------------------------
 # Run the stack's scaffold body as the service user, in the app dir, with the framework's variables in
 # the environment. The stack owns everything app-specific (install steps, generators, post-tweaks).
-# When the stack opts into design, the LILA_DESIGN_* draw + LILA_BIN are passed through so its render
-# can copy the system's curated tokens.css + reference package (LILA_DESIGN_DIR) and write design.lock.
+# The LILA_DESIGN_* draw + LILA_BIN are passed through so a stack's render can copy the system's curated
+# tokens.css + reference package (LILA_DESIGN_DIR) and write design.lock.
 log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
 ( cd "$APP_DIR" && sudo -u "$SERVICE_USER" -H \
     env LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
         LILA_DOMAIN="$DOMAIN" SKIP_AUTH="${SKIP_AUTH:-}" \
         SERVICE_USER="$SERVICE_USER" MISE="$MISE" LILA_BIN="$LILA_BIN" \
-        LILA_STACK_DESIGN_TOKENS="${LILA_STACK_DESIGN_TOKENS:-}" \
         LILA_DESIGN_BRAND="$LILA_DESIGN_BRAND" LILA_DESIGN_FILE="$LILA_DESIGN_FILE" \
         LILA_DESIGN_DIR="$LILA_DESIGN_DIR" \
         LILA_DESIGN_POOL="$LILA_DESIGN_POOL" LILA_DESIGN_SOURCE="$LILA_DESIGN_SOURCE" \

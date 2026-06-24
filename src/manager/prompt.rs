@@ -95,11 +95,10 @@ To attach an image to a message, put `ATTACH: /absolute/path.png` on its own lin
 Each ATTACH line is stripped from the text and its image is sent to the user alongside it. Only
 attach paths a worker actually reported in its summary — never guess or invent one."#;
 
-/// The manager's design-flow policy — included in its AGENTS.md only when the active stack ships a
-/// design system. This is the HUMAN-facing half of the feature: the manager (the only thing that
-/// talks to the owner) learns the look exists, when to offer it, and how to change it. The per-turn
-/// context names the active look + ownership state ([`design_status_section`]); this is the standing
-/// policy over it.
+/// The manager's design-flow policy. This is the HUMAN-facing half of the design system: the manager
+/// (the only thing that talks to the owner) learns the look exists, when to offer it, and how to
+/// change it. The per-turn context names the active look + ownership state ([`design_status_section`])
+/// only when a `design.lock` is present, so on a backend-only app the policy simply never fires.
 const DESIGN_FLOW: &str = r#"Design — the app's look (only for user-visible work; ignore it for backend tasks):
 This app has one locked design system. Your per-turn context names the active look and whether the
 owner has chosen it. The look is the app's identity — never change or reroll it on your own.
@@ -121,9 +120,6 @@ pub struct RuntimeFacts {
     /// The active stack's "the app" fragment ([`crate::stack::StackProfile::manager_prompt`]); its
     /// `{workspace}`/`{service}` placeholders are filled from the facts above.
     pub stack_app: String,
-    /// Whether the active stack ships a design system (`[design]` block). Gates the [`DESIGN_FLOW`]
-    /// policy so backend-only stacks never hear about a look they don't have.
-    pub has_design: bool,
 }
 
 fn render_runtime(r: &RuntimeFacts) -> String {
@@ -153,18 +149,22 @@ fn render_runtime(r: &RuntimeFacts) -> String {
 /// The static AGENTS.md body written to the manager working directory at startup.
 pub fn build_agents_md(runtime: &RuntimeFacts) -> String {
     let runtime_section = render_runtime(runtime);
-    let mut parts: Vec<&str> = vec![CREED, MANAGER_PERSONA, HOW_YOU_WORK, &runtime_section];
-    if runtime.has_design {
-        parts.push(DESIGN_FLOW);
-    }
-    parts.push(YOUR_TOOLS);
+    let parts: Vec<&str> = vec![
+        CREED,
+        MANAGER_PERSONA,
+        HOW_YOU_WORK,
+        &runtime_section,
+        DESIGN_FLOW,
+        YOUR_TOOLS,
+    ];
     parts.join("\n\n")
 }
 
 /// A per-turn note on the app's locked design system, read FRESH from `design.lock` in the workspace
-/// (the `source` field can change mid-session when the owner picks a look). `None` when the app has no
-/// design system — stack opted out, or not yet scaffolded — so the manager hears nothing about design
-/// it doesn't have. This is what lifts the design state up to the layer that talks to the owner.
+/// (the `source` field can change mid-session when the owner picks a look). `None` when there is no
+/// `design.lock` yet — a backend-only app, or one not yet scaffolded — so the manager hears nothing
+/// about design it doesn't have. This is what lifts the design state up to the layer that talks to the
+/// owner.
 pub fn design_status_section(workspace_dir: &str) -> Option<String> {
     let path = std::path::Path::new(workspace_dir).join("design.lock");
     let lock = crate::design::DesignLock::parse(&std::fs::read_to_string(path).ok()?).ok()?;
@@ -202,20 +202,20 @@ pub fn build_context_header(mem: &MemFs) -> String {
 mod tests {
     use super::*;
 
-    fn facts(has_design: bool) -> RuntimeFacts {
+    fn facts() -> RuntimeFacts {
         RuntimeFacts {
             app_public_url: String::new(),
             workspace_dir: "/tmp/none".into(),
             app_service_name: "lila-app@x".into(),
             stack_app: "- the app at {workspace} ({service})".into(),
-            has_design,
         }
     }
 
     #[test]
-    fn design_policy_only_when_the_stack_ships_a_design_system() {
-        assert!(build_agents_md(&facts(true)).contains("never change or reroll it on your own"));
-        assert!(!build_agents_md(&facts(false)).contains("Design — the app's look"));
+    fn design_policy_is_always_present() {
+        // Design is universal, not stack-keyed: the manager always carries the design-flow policy.
+        // It simply never fires on a backend-only app (no `design.lock` ⇒ no per-turn design note).
+        assert!(build_agents_md(&facts()).contains("never change or reroll it on your own"));
     }
 
     #[test]
