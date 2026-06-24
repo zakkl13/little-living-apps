@@ -62,6 +62,7 @@ secrets it can't invent.
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
 sudo bash bootstrap.sh                    # the active stack's toolchain + Node + Rust, agent CLI, builds the lila binary, systemd
+sudo LILA_INSTANCE=primary bash bin/new-app # scaffold + start the primary app service
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
 sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex \
@@ -71,7 +72,10 @@ sudo systemctl start lila-manager@primary
 journalctl -u lila-manager@primary -f      # watch it think
 ```
 
-`bootstrap.sh` is idempotent. Re-run it after pulling, then `systemctl restart lila-manager@primary`.
+`bootstrap.sh` prepares the host; `bin/new-app` is the explicit step that creates and starts the
+primary app (`lila-app@primary`). Both are idempotent. Re-run bootstrap after pulling, re-run
+`sudo LILA_INSTANCE=primary bash bin/new-app` when the stack scaffold changes, then restart the
+manager with `systemctl restart lila-manager@primary`.
 
 ### Slash commands
 
@@ -209,9 +213,11 @@ a local Inspector.)
 
 Ask for an app and a worker scaffolds it with `lila-new-app`: a minimal **Rails 8 + PWA** project,
 SQLite on the Solid stack, Hotwire, Rails' built-in auth, running in **reload mode** so edits go
-live on the next request. It binds to `127.0.0.1:3000`, private to the box. To publish behind your own
-domain with **automatic HTTPS**, point DNS at the host and set `LILA_DOMAIN` when you run
-`bootstrap.sh`; it installs Caddy and writes the site block for you.
+live on the next request. During setup, the primary app is created explicitly with
+`sudo LILA_INSTANCE=primary bash bin/new-app`; bootstrap only prepares the host and proxy. The app
+binds to `127.0.0.1:3000`, private to the box. To publish behind your own domain with **automatic
+HTTPS**, point DNS at the host and set `LILA_DOMAIN` when you run `bootstrap.sh`; it installs Caddy
+and writes the site block for you.
 
 *Why:* Rails 8 is batteries-included (auth, DB, and a PWA on day one) and reload mode means edits go
 live without a deploy step, which is exactly the loop a maintaining agent needs. The substrate is

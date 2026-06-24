@@ -1,13 +1,13 @@
 ---
 name: setup-living-app
-description: Stand up a Little Living Apps instance end to end — choose and provision a fresh VPS, get SSH in, create a Telegram bot, fill in .env, run bootstrap.sh, do the one-time subscription login (Codex or Claude), optionally publish behind a domain with HTTPS, and verify the bot replies. Use when the user wants to set up, install, deploy, self-host, or get started with Little Living Apps, stand up the Telegram app-builder bot, or provision a box for it.
+description: Stand up a Little Living Apps instance end to end — choose and provision a fresh VPS, get SSH in, create a Telegram bot, fill in .env, run bootstrap.sh, explicitly start the primary app with bin/new-app, do the one-time subscription login (Codex or Claude), optionally publish behind a domain with HTTPS, and verify the app and bot reply. Use when the user wants to set up, install, deploy, self-host, or get started with Little Living Apps, stand up the Telegram app-builder bot, or provision a box for it.
 ---
 
 # Set up a Little Living App
 
 You are walking the user through standing up one Little Living Apps instance on a host they own. The
 end state: a Telegram bot, running under systemd on a fresh VPS, that the user can text to build and
-maintain one app.
+maintain one app, plus the primary app service running under `lila-app@primary`.
 
 **Hard rule — the host is the security boundary.** Workers run with `danger-full-access` and never
 pause for approval. Provision a **fresh, disposable VPS** with nothing else on it. Never run this on
@@ -28,6 +28,7 @@ git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-
 cp .env.example .env
 # edit .env: set TELEGRAM_BOT_TOKEN and ALLOWED_USER_IDS (optionally LILA_STACK, LILA_DOMAIN)
 sudo bash bootstrap.sh
+sudo LILA_INSTANCE=primary bash bin/new-app
 # one-time login (default Codex backend / ChatGPT subscription) — run the exact command
 # bootstrap.sh just printed; it fills in the service user. It looks like:
 sudo -u <service-user> -H CODEX_HOME=/var/lib/lila/codex ~<service-user>/.local/bin/mise exec -- codex login --device-auth
@@ -85,10 +86,18 @@ Work through these in order. Check each off before moving on.
   Playwright, and the Rust toolchain; **builds the `lila` binary** to `/opt/lila/bin` (a cargo
   release build — a few minutes; bootstrap adds swap on small boxes so it won't OOM); creates data
   dirs; installs the systemd unit; and (if `LILA_DOMAIN` is set) Caddy.
+- Bootstrap prepares the host and manager service, but it does **not** scaffold or start the primary
+  app. The app is a separate explicit step after the host is ready.
 - If it dies on the billing-guard or a missing `.env` value, fix the value and re-run. Common
   failures (incl. an OOM during the cargo build) are in [REFERENCE.md](REFERENCE.md).
 
-### 7. One-time subscription login (human, then you start the service)
+### 7. Start the primary app (you)
+- Run `sudo LILA_INSTANCE=primary bash bin/new-app`. This scaffolds the selected stack into
+  `/srv/primary`, installs the `lila-app@primary` systemd unit, and starts/restarts the app on the
+  configured `APP_PORT` (default `3000`).
+- This step is idempotent. Re-run it after stack scaffold changes or if `lila-app@primary` is missing.
+
+### 8. One-time subscription login (human, then you start the manager)
 - bootstrap prints the exact command. For the default Codex backend it's:
   `sudo -u <user> -H CODEX_HOME=/var/lib/lila/codex ~/.local/bin/mise exec -- codex login --device-auth`
   — run it and have the user complete the device-auth in their browser. For the Claude backend, log
@@ -96,13 +105,15 @@ Work through these in order. Check each off before moving on.
   `CLAUDE_CODE_OAUTH_TOKEN`) instead.
 - Then start it: `sudo systemctl start lila-manager@primary`.
 
-### 8. (Optional) Publish behind a domain (human DNS + you)
+### 9. (Optional) Publish behind a domain (human DNS + you)
 - Point an **A record** for the domain at the box's public IP, and make sure ports **80 and 443** are
   open in the provider firewall / security group.
 - Set `LILA_DOMAIN=app.example.com` in `.env` and re-run `sudo bash bootstrap.sh`. It installs Caddy
   and issues HTTPS on first request. Skip this to keep the app private to the box.
 
-### 9. Verify (you + user)
+### 10. Verify (you + user)
+- Confirm the app service is active: `systemctl status lila-app@primary`. If `LILA_DOMAIN` is set,
+  `curl -I https://<domain>/up` should return `200`.
 - Tail the logs: `journalctl -u lila-manager@primary -f` — you should see it boot and start
   long-polling.
 - Have the user **text the bot** something like *"build me a reading log."* A reply (and worker

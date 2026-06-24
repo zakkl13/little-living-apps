@@ -89,6 +89,9 @@ re-run. Check both: `env | grep -E 'OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_API_K
   sizing) and re-run; bootstrap is idempotent (it skips work already done).
 - **No `.env`** — bootstrap warns and writes an empty `/etc/lila/primary.env`; create `.env` from
   `.env.example` first, then re-run.
+- **Domain returns 502 / app is not listening** — bootstrap configures the host and proxy, but it
+  does not scaffold or start the primary app. Run `sudo LILA_INSTANCE=primary bash bin/new-app`,
+  then check `systemctl status lila-app@primary`.
 
 ## Auth notes
 

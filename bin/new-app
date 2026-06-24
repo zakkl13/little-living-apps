@@ -84,9 +84,11 @@ log "Active design: $LILA_DESIGN_BRAND (pool=$LILA_DESIGN_POOL, source=$LILA_DES
 # the environment. The stack owns everything app-specific (install steps, generators, post-tweaks).
 # The LILA_DESIGN_* draw + LILA_BIN are passed through so a stack's render can copy the system's curated
 # tokens.css + reference package (LILA_DESIGN_DIR) and write design.lock.
+# Put mise on PATH for scaffold-time hooks such as RubyGems' `mise reshim`.
 log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
 ( cd "$APP_DIR" && sudo -u "$SERVICE_USER" -H \
-    env LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
+    env PATH="$USER_HOME/.local/bin:$PATH" \
+        LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
         LILA_DOMAIN="$DOMAIN" SKIP_AUTH="${SKIP_AUTH:-}" \
         SERVICE_USER="$SERVICE_USER" MISE="$MISE" LILA_BIN="$LILA_BIN" \
         LILA_DESIGN_BRAND="$LILA_DESIGN_BRAND" LILA_DESIGN_FILE="$LILA_DESIGN_FILE" \
