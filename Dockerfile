@@ -19,6 +19,7 @@ RUN apt-get update \
         ca-certificates \
         cmake \
         curl \
+        docker.io \
         git \
         gnupg \
         build-essential \
