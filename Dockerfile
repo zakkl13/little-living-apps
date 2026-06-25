@@ -36,7 +36,8 @@ RUN npm install -g @openai/codex @anthropic-ai/claude-code \
     && cd /opt/lila/tooling \
     && npm init -y >/dev/null \
     && npm install playwright \
-    && npx playwright install chromium
+    && npx playwright install chromium \
+    && npx playwright install-deps chromium
 
 COPY --from=builder /src/target/release/lila /opt/lila/bin/lila
 COPY stacks /opt/lila/stacks
