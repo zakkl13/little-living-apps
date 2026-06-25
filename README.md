@@ -87,7 +87,7 @@ secrets it can't invent.
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-sudo bash bootstrap.sh                    # the active stack's toolchain + Node + Rust, agent CLI, builds the lila binary, systemd
+sudo bash bootstrap.sh                    # the active stack's toolchain + Node + Rust, both agent CLIs, builds the lila binary, systemd
 sudo LILA_INSTANCE=primary bash bin/new-app # scaffold + start the primary app service
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
@@ -203,6 +203,9 @@ Every choice here bought something and cost something. Both sides, for each:
 The manager brain and the workers both run on a subscription-billed backend, selected by
 `AGENT_BACKEND` (default `codex`). Both ride a subscription, not metered API billing, behind the
 same internal seams.
+
+`bootstrap.sh` installs both `codex` and `claude` under the same mise-managed Node, so a later
+`/backend codex|claude` swap does not depend on which backend was active during install.
 
 | | `codex` (default) | `claude` |
 |---|---|---|

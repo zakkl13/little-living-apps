@@ -1,7 +1,8 @@
 //! `lila doctor` — config + backend CLI availability. A light, side-effect-free health probe usable
 //! over SSM on the live host.
 
-use crate::config::{AgentBackend, Config};
+use crate::backend_cli::backend_cli_status;
+use crate::config::Config;
 
 pub async fn run() -> i32 {
     let cfg = match Config::load() {
@@ -14,27 +15,12 @@ pub async fn run() -> i32 {
 
     println!("config:   OK ({} backend)", cfg.agent_backend);
 
-    let (bin, override_path) = match cfg.agent_backend {
-        AgentBackend::Codex => ("codex", cfg.codex_path_override.clone()),
-        AgentBackend::Claude => ("claude", None),
-    };
-    let found = match &override_path {
-        Some(path) => std::path::Path::new(path).exists(),
-        None => which_on_path(bin),
-    };
-    if found {
-        println!("backend:  {bin} CLI found");
+    let status = backend_cli_status(&cfg, cfg.agent_backend);
+    if status.found() {
+        println!("backend:  {}", status.found_message());
         0
     } else {
-        eprintln!("backend:  {bin} CLI NOT found on PATH (auth/run will fail)");
+        eprintln!("backend:  {}", status.missing_message());
         1
     }
-}
-
-/// True if `bin` resolves on `PATH` (a small, dependency-free `which`).
-fn which_on_path(bin: &str) -> bool {
-    let Ok(path) = std::env::var("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| dir.join(bin).is_file())
 }

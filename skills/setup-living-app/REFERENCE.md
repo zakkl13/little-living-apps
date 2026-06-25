@@ -101,6 +101,9 @@ re-run. Check both: `env | grep -E 'OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_API_K
 - **Claude:** log the box into the Claude Pro/Max subscription with `claude setup-token`, or export
   `CLAUDE_CODE_OAUTH_TOKEN`. Subscription terms note: don't *offer* this to other people without
   Anthropic sign-off — single-owner personal use only.
+- Bootstrap installs both agent CLIs (`codex` and `claude`) regardless of the initially selected
+  backend, so later `/backend` swaps should not need a package install. If a legacy host says the
+  Claude CLI is missing, pull this version and re-run `sudo bash bootstrap.sh`.
 - A `/backend codex|claude` message in the chat hot-swaps the backend later; it starts a fresh
   manager thread but keeps long-term memory.
 

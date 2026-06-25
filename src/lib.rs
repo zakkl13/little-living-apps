@@ -10,6 +10,7 @@
 // .github/workflows + scripts/check-complexity.sh). clippy's `cognitive_complexity` (clippy.toml
 // threshold) is a stricter, noisier cousin we leave as a manual guide rather than a hard gate.
 
+pub mod backend_cli;
 pub mod cli;
 pub mod commands;
 pub mod config;

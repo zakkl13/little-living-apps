@@ -33,7 +33,7 @@ Environment=LILA_INSTANCE=%i
 Environment=NODE_PATH=/opt/lila/tooling/node_modules
 # The codex/claude CLIs are mise-managed node scripts; the native binary gets no mise shell hook, so
 # put the mise node bin dir (holds BOTH `codex`/`claude` AND the `node` they shebang to) on PATH.
-# bootstrap.sh substitutes __NODEBIN__ from `mise which codex`.
+# bootstrap.sh substitutes __NODEBIN__ from the shared mise Node bin dir after verifying both CLIs.
 Environment=PATH=__NODEBIN__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # The self-contained release binary, built + installed to /opt/lila/bin by bootstrap.sh.
 ExecStart=/opt/lila/bin/lila run

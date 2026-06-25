@@ -250,6 +250,11 @@ impl App {
                 .await;
             return;
         }
+        if let Err(err) = crate::backend_cli::ensure_backend_cli(&self.cfg, target) {
+            self.reply(chat_id, &format!("⛔ Can't switch to {target}: {err}"))
+                .await;
+            return;
+        }
         if let Err(err) = self.persist_backend_choice(target) {
             self.reply(
                 chat_id,

@@ -5,8 +5,8 @@
 #     cp .env.example .env && $EDITOR .env        # fill in tokens
 #     sudo bash bootstrap.sh
 #
-# Installs the toolchain (mise -> Node + the active stack's app language, the agent CLI, Playwright),
-# the Rust toolchain, BUILDS
+# Installs the toolchain (mise -> Node + the active stack's app language, both agent CLIs,
+# Playwright), the Rust toolchain, BUILDS
 # the self-contained `lila` binary to /opt/lila/bin, creates the data dirs + workspace, and
 # installs+enables the systemd service. Idempotent: safe to re-run.
 #
@@ -41,11 +41,17 @@ if [[ -z "$backend" && -f "$REPO_DIR/.env" ]]; then
   backend="$(grep -E '^[[:space:]]*AGENT_BACKEND=' "$REPO_DIR/.env" | tail -1 | sed -E 's/^[[:space:]]*AGENT_BACKEND=//; s/^"//; s/"$//' | tr -d '[:space:]')"
 fi
 backend="${backend:-codex}"
-if [[ "$backend" == "claude" ]]; then
-  guard_keys=(ANTHROPIC_API_KEY); subscription="Claude Pro/Max subscription"; agent_pkg="@anthropic-ai/claude-code"; agent_bin="claude"
-else
-  guard_keys=(OPENAI_API_KEY CODEX_API_KEY); subscription="ChatGPT subscription"; agent_pkg="@openai/codex"; agent_bin="codex"
-fi
+case "$backend" in
+  claude)
+    guard_keys=(ANTHROPIC_API_KEY); subscription="Claude Pro/Max subscription"
+    ;;
+  codex)
+    guard_keys=(OPENAI_API_KEY CODEX_API_KEY); subscription="ChatGPT subscription"
+    ;;
+  *)
+    die "AGENT_BACKEND must be codex or claude (got '$backend')."
+    ;;
+esac
 for key in "${guard_keys[@]}"; do
   [[ -z "${!key:-}" ]] || die "$key is set in the environment. Unset it (the $backend backend must ride the $subscription)."
   if [[ -f "$REPO_DIR/.env" ]] && grep -qE "^[[:space:]]*${key}=" "$REPO_DIR/.env"; then
@@ -75,9 +81,9 @@ run_as "cd '$REPO_DIR' && '$MISE' trust && '$MISE' install"
 # `lila stack` can read it). Node is always needed (agent CLI + validation), the app stack is not.
 run_as "'$MISE' use -g node@22"
 
-# --- 4. Agent CLI + Rust toolchain + BUILD the lila binary ------------------------------------
-log "Installing $agent_pkg (the $backend CLI, under the mise-managed Node)"
-run_as "cd '$REPO_DIR' && '$MISE' exec -- npm install -g $agent_pkg"
+# --- 4. Agent CLIs + Rust toolchain + BUILD the lila binary -----------------------------------
+log "Installing Codex + Claude CLIs under the mise-managed Node"
+run_as "cd '$REPO_DIR' && '$MISE' exec -- npm install -g @openai/codex @anthropic-ai/claude-code"
 
 log "Installing the Rust toolchain (rustup) for $SERVICE_USER"
 run_as '[ -x "$HOME/.cargo/bin/cargo" ] || curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal'
@@ -109,10 +115,16 @@ if [[ -n "$LILA_STACK_TOOLCHAIN" ]]; then
   run_as "'$MISE' use -g $LILA_STACK_TOOLCHAIN"
 fi
 
-# The mise node bin dir holds BOTH the agent CLI and the `node` it shebangs to; the native systemd
+# The mise node bin dir holds BOTH agent CLIs and the `node` they shebang to; the native systemd
 # unit puts it on PATH (it gets no mise shell hook). Resolve it now for the unit substitution below.
-NODEBIN="$(run_as "dirname \"\$('$MISE' which $agent_bin)\"")"
-[[ -n "$NODEBIN" && -x "$NODEBIN/$agent_bin" ]] || die "Could not resolve the $agent_bin CLI via mise (NODEBIN=$NODEBIN)."
+CODEX_CLI="$(run_as "'$MISE' which codex" 2>/dev/null || true)"
+CLAUDE_CLI="$(run_as "'$MISE' which claude" 2>/dev/null || true)"
+NODEBIN="$(dirname -- "$CODEX_CLI" 2>/dev/null || true)"
+CLAUDE_NODEBIN="$(dirname -- "$CLAUDE_CLI" 2>/dev/null || true)"
+[[ -n "$CODEX_CLI" && -x "$CODEX_CLI" ]] || die "Could not resolve the codex CLI via mise."
+[[ -n "$CLAUDE_CLI" && -x "$CLAUDE_CLI" ]] || die "Could not resolve the claude CLI via mise."
+[[ "$NODEBIN" == "$CLAUDE_NODEBIN" ]] ||
+  die "Codex and Claude CLIs resolved to different bin dirs ($NODEBIN vs $CLAUDE_NODEBIN); systemd needs both in one mise Node bin dir."
 
 # --- 4b. Playwright + headless Chromium (workers self-validate: drive + screenshot the app) ----
 # The `playwright` npm package goes into a FIXED, node-version-independent location

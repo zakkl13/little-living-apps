@@ -38,6 +38,11 @@ pub async fn run() -> i32 {
 }
 
 async fn build_and_run(cfg: Config) -> anyhow::Result<()> {
+    if !using_fake_backend() {
+        crate::backend_cli::ensure_backend_cli(&cfg, cfg.agent_backend)
+            .map_err(|err| anyhow::anyhow!("setup preflight failed: {err}"))?;
+    }
+
     let telegram = TelegramClient::new(&cfg.telegram_api_base_url, &cfg.telegram_bot_token);
     let mem = Arc::new(Mutex::new(MemFs::open(MemFsOptions {
         dir: cfg.memory_dir.clone().into(),
@@ -142,16 +147,19 @@ async fn build_backend(
 
 /// The scripted fake runner, when `LILA_FAKE_BACKEND` is set (integration tests). Inert otherwise.
 fn fake_runner() -> Option<Arc<dyn Runner>> {
-    std::env::var("LILA_FAKE_BACKEND")
-        .is_ok()
+    using_fake_backend()
         .then(|| Arc::new(crate::workers::fake_runner::FakeRunner::from_env()) as Arc<dyn Runner>)
 }
 
 /// The scripted fake backend, when `LILA_FAKE_BACKEND` is set (integration tests). Inert otherwise.
 fn fake_backend() -> Option<Box<dyn ManagerBackend>> {
-    std::env::var("LILA_FAKE_BACKEND").is_ok().then(|| {
+    using_fake_backend().then(|| {
         Box::new(crate::manager::fake_backend::FakeBackend::from_env()) as Box<dyn ManagerBackend>
     })
+}
+
+fn using_fake_backend() -> bool {
+    std::env::var("LILA_FAKE_BACKEND").is_ok()
 }
 
 /// Load config, applying any persisted `/backend` override via the env map (no `set_var`, so the

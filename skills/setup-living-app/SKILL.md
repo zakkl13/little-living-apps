@@ -82,7 +82,7 @@ Work through these in order. Check each off before moving on.
   [REFERENCE.md](REFERENCE.md) for how stacks work and how to add your own.
 
 ### 6. Run bootstrap (you)
-- `sudo bash bootstrap.sh`. It's idempotent. It installs mise → Ruby + Node, the agent CLI,
+- `sudo bash bootstrap.sh`. It's idempotent. It installs mise → Ruby + Node, both agent CLIs,
   Playwright, and the Rust toolchain; **builds the `lila` binary** to `/opt/lila/bin` (a cargo
   release build — a few minutes; bootstrap adds swap on small boxes so it won't OOM); creates data
   dirs; installs the systemd unit; and (if `LILA_DOMAIN` is set) Caddy.

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # bin/new-instance — stand up an ADDITIONAL little living app on a host already bootstrapped by
-# bootstrap.sh. The model never changes: one instance = one brain (a Codex manager) = one app. This
-# just lets several of them share a host, each fully isolated by its own per-instance env file
+# bootstrap.sh. The model never changes: one instance = one brain (Codex or Claude manager) = one
+# app. This just lets several of them share a host, each fully isolated by its own per-instance env file
 # (/etc/lila/<name>.env), workspace (/srv/<name>), data dir (/var/lib/lila/<name>), ports, Telegram
 # bot, and domain. The manager + app run under systemd TEMPLATE units (lila-{manager,app}@<name>).
 #
-# Prereq: bootstrap.sh has already run on this host (toolchain, Codex CLI, Playwright, Caddy).
+# Prereq: bootstrap.sh has already run on this host (toolchain, Codex + Claude CLIs, Playwright,
+# Caddy).
 #
 #   sudo LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
 #        TELEGRAM_BOT_TOKEN=123:ABC \
@@ -117,16 +118,20 @@ umask 022
 
 # --- 3. Manager template unit (host-level constants substituted once) --------------------------
 log "Installing systemd template unit lila-manager@.service; enabling lila-manager@$NAME"
-# The mise node bin dir (holds codex+node) goes on the manager unit's PATH (it runs the native binary,
-# which gets no mise shell hook). Same dir the /opt/lila/bin/lila binary was built against.
+# The mise node bin dir (holds codex+claude+node) goes on the manager unit's PATH (it runs the native
+# binary, which gets no mise shell hook). Same dir the /opt/lila/bin/lila binary was built against.
 # Resolve it via the ABSOLUTE $MISE: a bare `mise` is NOT on PATH in the non-interactive `run_as` login
 # shell (e.g. under SSM), so `mise which codex` would print nothing and `dirname ""` would silently
 # yield ".", baking a broken `PATH=.:…` into the unit that crash-loops the manager ("codex init: Codex
 # CLI not found"). Fail loudly instead if the bin dir can't be resolved.
 CODEX_BIN="$(run_as "'$MISE' which codex" 2>/dev/null || true)"
+CLAUDE_BIN="$(run_as "'$MISE' which claude" 2>/dev/null || true)"
 NODEBIN="$(dirname -- "$CODEX_BIN" 2>/dev/null || true)"
-[[ -n "$CODEX_BIN" && "$NODEBIN" != "." && -d "$NODEBIN" ]] ||
-  die "Could not resolve the codex CLI bin dir via mise (got NODEBIN='$NODEBIN'). Run bootstrap.sh on this host first."
+CLAUDE_NODEBIN="$(dirname -- "$CLAUDE_BIN" 2>/dev/null || true)"
+[[ -n "$CODEX_BIN" && -x "$CODEX_BIN" && "$NODEBIN" != "." && -d "$NODEBIN" ]] ||
+  die "Could not resolve the codex CLI bin dir via mise (got NODEBIN='$NODEBIN'). Re-run bootstrap.sh on this host first."
+[[ -n "$CLAUDE_BIN" && -x "$CLAUDE_BIN" && "$CLAUDE_NODEBIN" == "$NODEBIN" ]] ||
+  die "Could not resolve the claude CLI in the same mise bin dir as codex. Re-run bootstrap.sh on this host first."
 sed -e "s|__USER__|$SERVICE_USER|g" -e "s|__NODEBIN__|$NODEBIN|g" \
   "$REPO_DIR/deploy/lila-manager@.service" > /etc/systemd/system/lila-manager@.service
 systemctl daemon-reload
