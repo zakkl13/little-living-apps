@@ -97,7 +97,7 @@ MEMORY_DIR=/var/lib/lila/memory
 MANAGER_STATE_DIR=/var/lib/lila/state
 CODEX_HOME=/var/lib/lila/codex
 CODEX_SANDBOX_MODE=${CODEX_SANDBOX_MODE:-danger-full-access}
-LILA_APP_RESTART_CMD=${LILA_APP_RESTART_CMD:-docker restart ${NAME}-app-1}
+LILA_APP_RESTART_CMD="${LILA_APP_RESTART_CMD:-docker restart ${NAME}-app-1}"
 TELEGRAM_API_BASE_URL=${TELEGRAM_API_BASE_URL:-https://api.telegram.org}
 EOF
 chmod 600 "$ENV_FILE"

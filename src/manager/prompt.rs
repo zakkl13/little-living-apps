@@ -119,8 +119,9 @@ pub struct RuntimeFacts {
     pub app_public_url: String,
     pub workspace_dir: String,
     pub app_service_name: String,
+    pub app_restart_cmd: String,
     /// The active stack's "the app" fragment ([`crate::stack::StackProfile::manager_prompt`]); its
-    /// `{workspace}`/`{service}` placeholders are filled from the facts above.
+    /// `{workspace}`/`{service}`/`{restart_cmd}` placeholders are filled from the facts above.
     pub stack_app: String,
 }
 
@@ -135,7 +136,8 @@ fn render_runtime(r: &RuntimeFacts) -> String {
     let stack_app = r
         .stack_app
         .replace("{workspace}", &r.workspace_dir)
-        .replace("{service}", &r.app_service_name);
+        .replace("{service}", &r.app_service_name)
+        .replace("{restart_cmd}", &r.app_restart_cmd);
     format!(
         "## Your runtime environment\n\
          You and your team run on a Linux VM you fully control — a disposable host that IS the\n\
@@ -209,7 +211,8 @@ mod tests {
             app_public_url: String::new(),
             workspace_dir: "/tmp/none".into(),
             app_service_name: "lila-app@x".into(),
-            stack_app: "- the app at {workspace} ({service})".into(),
+            app_restart_cmd: "sudo systemctl restart lila-app@x".into(),
+            stack_app: "- the app at {workspace} ({service}; {restart_cmd})".into(),
         }
     }
 

@@ -154,8 +154,10 @@ pub struct Config {
     pub app_public_url: String,
     /// Holds the app the agent builds and maintains.
     pub workspace_dir: String,
-    /// systemd unit name for the app, so a worker restarts the RIGHT app.
+    /// systemd unit name for the app, retained for systemd deploys and backwards compatibility.
     pub app_service_name: String,
+    /// Command workers should run after structural app changes.
+    pub app_restart_cmd: String,
     /// Active stack plugin (`stacks/<stack>/`), chosen by `LILA_STACK` (default `rails-pwa`). Decides
     /// the *kind of app* the team builds — scaffold, serve, prompts, eval fixture all read it.
     pub stack: String,
@@ -321,6 +323,7 @@ impl Validated {
 struct Paths {
     workspace_dir: String,
     app_service_name: String,
+    app_restart_cmd: String,
     memory_dir: String,
     manager_dir: String,
     manager_state_dir: String,
@@ -332,11 +335,15 @@ impl Paths {
             get_trimmed(env, "MANAGER_STATE_DIR").unwrap_or_else(|| "/var/lib/lila/state".into());
         let manager_dir = get_trimmed(env, "MANAGER_DIR")
             .unwrap_or_else(|| format!("{manager_state_dir}/manager"));
+        let app_service_name =
+            get_trimmed(env, "LILA_APP_SERVICE").unwrap_or_else(|| "lila-app@primary".into());
+        let app_restart_cmd = get_trimmed(env, "LILA_APP_RESTART_CMD")
+            .unwrap_or_else(|| format!("sudo systemctl restart {app_service_name}"));
         Self {
             workspace_dir: get_trimmed(env, "WORKSPACE_DIR")
                 .unwrap_or_else(|| "/srv/primary".into()),
-            app_service_name: get_trimmed(env, "LILA_APP_SERVICE")
-                .unwrap_or_else(|| "lila-app@primary".into()),
+            app_service_name,
+            app_restart_cmd,
             memory_dir: get_trimmed(env, "MEMORY_DIR")
                 .unwrap_or_else(|| "/var/lib/lila/memory".into()),
             manager_dir,
@@ -387,6 +394,7 @@ impl Config {
             app_public_url: derive_public_url(env),
             workspace_dir: paths.workspace_dir,
             app_service_name: paths.app_service_name,
+            app_restart_cmd: paths.app_restart_cmd,
             stack: get_trimmed(env, "LILA_STACK").unwrap_or_else(|| "rails-pwa".into()),
             design: get_trimmed(env, "LILA_DESIGN").unwrap_or_else(|| "random".into()),
             sandbox_mode: valid.sandbox_mode,
@@ -437,6 +445,21 @@ mod tests {
         assert_eq!(cfg.app_public_url, "");
         assert_eq!(cfg.stack, "rails-pwa", "default stack is rails-pwa");
         assert_eq!(cfg.design, "random", "default design is a safe blind draw");
+        assert_eq!(
+            cfg.app_restart_cmd,
+            "sudo systemctl restart lila-app@primary"
+        );
+    }
+
+    #[test]
+    fn app_restart_cmd_overrides_the_systemd_default() {
+        let mut env = base_env();
+        env.insert(
+            "LILA_APP_RESTART_CMD".into(),
+            "docker restart demo-app-1".into(),
+        );
+        let cfg = Config::from_env(&env).expect("loads");
+        assert_eq!(cfg.app_restart_cmd, "docker restart demo-app-1");
     }
 
     #[test]

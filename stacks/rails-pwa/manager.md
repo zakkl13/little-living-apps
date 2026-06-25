@@ -3,4 +3,4 @@
   `lila-new-app` to create a minimal Rails 8 + PWA app to build on.
 - Reload mode: a worker's edits to existing code go live on the NEXT request — no restart.
   Only structural changes (a new gem, an initializer, a route, a migration) need
-  `sudo systemctl restart {service}`, which a worker can run.
+  `{restart_cmd}`, which a worker can run.

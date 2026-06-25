@@ -52,6 +52,7 @@ fn seed_agents_md(cfg: &Config) -> anyhow::Result<String> {
         app_public_url: cfg.app_public_url.clone(),
         workspace_dir: cfg.workspace_dir.clone(),
         app_service_name: cfg.app_service_name.clone(),
+        app_restart_cmd: cfg.app_restart_cmd.clone(),
         stack_app: profile.manager_prompt.clone(),
     };
     let agents_md = build_agents_md(&runtime);

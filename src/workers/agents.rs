@@ -38,11 +38,12 @@ back from you is the summary block described here — so everything it needs mus
 - You run on an **always-on Linux VM** you and your team fully control. There is no hibernation.
 - You have a persistent filesystem, outbound internet, and root-capable tooling. The app lives in
   this git repo — your working directory (`$WORKSPACE_DIR`; `/srv/<instance>`, e.g. `/srv/primary`).
-- **This host may run several little-living-apps instances.** Every app is a systemd template
-  instance `lila-app@<instance>`. You only ever touch **your** app: reach it at
-  `http://localhost:${APP_PORT:-3000}` and restart it with **your** unit
-  `${LILA_APP_SERVICE:-lila-app@primary}`. Never hardcode `3000` or a literal unit name.
-- **Long-running processes are managed by `systemd`**, not a TTY. Install a unit so they survive."####;
+- **This host may run several little-living-apps instances.** You only ever touch **your** app:
+  reach it at `http://localhost:${APP_PORT:-3000}` and, when a structural change requires it,
+  restart it with `$LILA_APP_RESTART_CMD`. Never hardcode `3000`, a service name, or a container
+  name.
+- **Long-running processes are managed by the instance supervisor**, not a TTY. Use the configured
+  restart command instead of starting ad-hoc foreground servers."####;
 
 /// The framework-generic frame that closes the worker `AGENTS.md`: self-validation method and scope
 /// discipline. Appended after the stack's "## Runtime conventions" fragment.
