@@ -17,6 +17,7 @@ Welcome to the personal software era.
 [![ci](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml/badge.svg)](https://github.com/zakkl13/little-living-apps/actions/workflows/ci.yml)
 [![coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zakkl13/little-living-apps/badges/coverage.json)](#evals)
 [![eval](https://img.shields.io/badge/eval-1.00%20codex%20%C2%B7%200.95%20claude-brightgreen)](#evals)
+[![PRs encouraged](https://img.shields.io/badge/PRs-encouraged-brightgreen)](#adopt-it-fork-it-run-it-on-a-box-you-own)
 [![license](https://img.shields.io/badge/license-MIT-blue)](#license)
 
 </div>
@@ -41,6 +42,12 @@ The whole thing is small enough to keep in your head: **one agent, one app, one 
 runs over a Telegram long-poll. No open ports, no public URL, no cloud bill from us, because there
 is no us. You bring the host, the bot, and your existing ChatGPT or Claude subscription. That's the
 dependency list.
+
+### Status
+
+Little Living Apps is in early beta: the framework is moving quickly, and setup details may still
+change. It is usable today, already powers [lillivinapps.zakk.io](https://lillivinapps.zakk.io),
+and is being actively dogfooded across many other personal software ideas.
 
 ### The personal software era
 
@@ -324,9 +331,9 @@ Use `--filter`, `--axis`, or `--smoke` for whatever chunks fit under the current
 `--from-results` pass re-aggregates saved per-trial JSON without spending model tokens, so it also
 works if an earlier run was interrupted before writing its aggregate report.
 
-## Status
+## Roadmap
 
-Host-native and runnable today. The manager runs on a plain VM over long-poll; the app it builds is a
+The system is host-native and runnable today. The manager runs on a plain VM over long-poll; the app it builds is a
 **pluggable stack** (Rails 8 + PWA by default, `node-react` alongside it, and any directory you drop
 into `stacks/`). On the roadmap: more first-class stacks beyond the default, and giving the apps
 first-class self-observability, so the team can watch and maintain against real runtime behavior the
