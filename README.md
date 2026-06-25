@@ -49,6 +49,8 @@ Little Living Apps is in early beta: the framework is moving quickly, and setup 
 change. It is usable today, already powers [lillivinapps.zakk.io](https://lillivinapps.zakk.io),
 and is being actively dogfooded across many other personal software ideas.
 
+The supported production install target today is a fresh Ubuntu 22.04+/24.04 or Debian 12 systemd VPS; other Linux distributions may work but are not yet supported or tested.
+
 ### The personal software era
 
 The personal computer made the machine yours. The software on it didn't follow; it stayed
