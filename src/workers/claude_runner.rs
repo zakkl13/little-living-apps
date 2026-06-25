@@ -34,6 +34,17 @@ impl ClaudeRunner {
 #[async_trait]
 impl Runner for ClaudeRunner {
     async fn run(&self, args: RunArgs) -> Result<RunOutcome, RunnerError> {
+        if !args.cwd.is_dir() {
+            return Ok(RunOutcome {
+                ok: false,
+                final_response: format!(
+                    "⚠️ The agent run failed: worker cwd does not exist: {}",
+                    args.cwd.display()
+                ),
+                thread_id: None,
+                usage: TokenUsage::default(),
+            });
+        }
         let model = self
             .model
             .clone()
@@ -137,6 +148,9 @@ impl WorkerRun {
     fn absorb_assistant(&mut self, am: claude_agent_sdk_rust::AssistantMessage) {
         for block in am.message.content {
             if let ContentBlock::Text(t) = block {
+                if !self.text.is_empty() && !self.text.ends_with('\n') {
+                    self.text.push('\n');
+                }
                 self.text.push_str(&t.text);
             }
         }

@@ -2,7 +2,7 @@
 //! launches a single-shot run in the background and returns immediately; when it settles, ONE
 //! worker_event is sent onto the manager queue and the worker is gone. No registry, no resume.
 
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -58,10 +58,7 @@ impl Orchestrator {
     pub fn start(&self, objective: String, project: Option<String>) -> String {
         let n = self.counter.fetch_add(1, Ordering::SeqCst) + 1;
         let id = format!("w{n}");
-        let project_dir = match &project {
-            Some(p) => self.workspace_dir.join(p),
-            None => self.workspace_dir.clone(),
-        };
+        let project_dir = resolve_project_dir(&self.workspace_dir, project.as_deref());
         let turn_id = self.current_turn.load(Ordering::SeqCst);
         if let Ok(mut t) = self.telemetry.lock() {
             t.record_worker_launch();
@@ -129,6 +126,40 @@ impl Orchestrator {
     /// Number of runs currently in flight (used to gate premature "all done" replies).
     pub fn running(&self) -> usize {
         self.inflight.load(Ordering::SeqCst)
+    }
+}
+
+fn resolve_project_dir(workspace_dir: &Path, project: Option<&str>) -> PathBuf {
+    let Some(raw) = project.map(str::trim).filter(|p| !p.is_empty()) else {
+        return workspace_dir.to_path_buf();
+    };
+    if raw == "." || workspace_dir.file_name().and_then(|n| n.to_str()) == Some(raw) {
+        return workspace_dir.to_path_buf();
+    }
+
+    let project_path = Path::new(raw);
+    let candidate = if project_path.is_absolute() {
+        if project_path == workspace_dir || project_path.starts_with(workspace_dir) {
+            project_path.to_path_buf()
+        } else {
+            tracing::warn!(project = raw, workspace = %workspace_dir.display(), "subagent project escaped workspace; using workspace root");
+            workspace_dir.to_path_buf()
+        }
+    } else if project_path
+        .components()
+        .all(|c| matches!(c, Component::Normal(_)))
+    {
+        workspace_dir.join(project_path)
+    } else {
+        tracing::warn!(project = raw, workspace = %workspace_dir.display(), "invalid subagent project path; using workspace root");
+        workspace_dir.to_path_buf()
+    };
+
+    if candidate.is_dir() {
+        candidate
+    } else {
+        tracing::warn!(project = raw, resolved = %candidate.display(), workspace = %workspace_dir.display(), "subagent project directory missing; using workspace root");
+        workspace_dir.to_path_buf()
     }
 }
 
@@ -226,5 +257,30 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn project_instance_name_resolves_to_workspace_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("primary");
+        std::fs::create_dir(&workspace).unwrap();
+
+        assert_eq!(resolve_project_dir(&workspace, None), workspace);
+        assert_eq!(resolve_project_dir(&workspace, Some(".")), workspace);
+        assert_eq!(resolve_project_dir(&workspace, Some("primary")), workspace);
+    }
+
+    #[test]
+    fn project_resolution_stays_inside_existing_workspace_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("primary");
+        let frontend = workspace.join("frontend");
+        std::fs::create_dir(&workspace).unwrap();
+        std::fs::create_dir(&frontend).unwrap();
+
+        assert_eq!(resolve_project_dir(&workspace, Some("frontend")), frontend);
+        assert_eq!(resolve_project_dir(&workspace, Some("../etc")), workspace);
+        assert_eq!(resolve_project_dir(&workspace, Some("/etc")), workspace);
+        assert_eq!(resolve_project_dir(&workspace, Some("missing")), workspace);
     }
 }

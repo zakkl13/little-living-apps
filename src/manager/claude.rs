@@ -148,10 +148,7 @@ impl ManagerThread for ClaudeThread {
             .client
             .receive_response()
             .map_err(|e| BackendError::Run(e.to_string()))?;
-        let text = drain_response(stream, on_event).await;
-        if !text.trim().is_empty() {
-            on_event(BackendEvent::AgentMessage(text));
-        }
+        drain_response(stream, on_event).await;
         self.session = self.client.get_session_id();
         Ok(())
     }
@@ -171,29 +168,23 @@ impl ClaudeThread {
     }
 }
 
-/// Drain the response stream, forwarding events and accumulating the assistant text.
+/// Drain the response stream, forwarding assistant messages, tool calls, reasoning, and usage.
 async fn drain_response(
     stream: impl futures::Stream<Item = Result<Message, claude_agent_sdk_rust::ClaudeSDKError>>,
     on_event: &mut (dyn FnMut(BackendEvent) + Send),
-) -> String {
-    let mut text = String::new();
+) {
     tokio::pin!(stream);
     while let Some(msg) = stream.next().await {
         match msg {
-            Ok(message) => collect_message(message, &mut text, on_event),
+            Ok(message) => collect_message(message, on_event),
             Err(e) => on_event(BackendEvent::Failed(e.to_string())),
         }
     }
-    text
 }
 
-fn collect_message(
-    message: Message,
-    text: &mut String,
-    on_event: &mut (dyn FnMut(BackendEvent) + Send),
-) {
+fn collect_message(message: Message, on_event: &mut (dyn FnMut(BackendEvent) + Send)) {
     match message {
-        Message::Assistant(am) => collect_assistant(am, text, on_event),
+        Message::Assistant(am) => collect_assistant(am, on_event),
         Message::Result(rm) => collect_result(rm, on_event),
         _ => {}
     }
@@ -201,15 +192,15 @@ fn collect_message(
 
 fn collect_assistant(
     am: claude_agent_sdk_rust::AssistantMessage,
-    text: &mut String,
     on_event: &mut (dyn FnMut(BackendEvent) + Send),
 ) {
     if let Some(err) = am.error {
         on_event(BackendEvent::Failed(err));
     }
+    let mut text_blocks = Vec::new();
     for block in am.message.content {
         match block {
-            ContentBlock::Text(t) => text.push_str(&t.text),
+            ContentBlock::Text(t) => text_blocks.push(t.text),
             ContentBlock::Thinking(th) => on_event(BackendEvent::Reasoning(th.thinking)),
             ContentBlock::ToolUse(tu) => on_event(BackendEvent::ToolCall {
                 server: "lila".into(),
@@ -219,6 +210,14 @@ fn collect_assistant(
             }),
             ContentBlock::ToolResult(_) => {}
         }
+    }
+    let text = text_blocks
+        .into_iter()
+        .filter(|t| !t.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !text.trim().is_empty() {
+        on_event(BackendEvent::AgentMessage(text));
     }
 }
 
@@ -278,5 +277,43 @@ mod tests {
         );
         assert_eq!(got.cached_input_tokens, 90_000);
         assert_eq!(got.output_tokens, 4_000);
+    }
+
+    #[test]
+    fn emits_assistant_text_per_claude_message() {
+        use claude_agent_sdk_rust::types::content::TextBlock;
+        use claude_agent_sdk_rust::types::messages::AssistantMessageInner;
+
+        fn msg(text: &str) -> claude_agent_sdk_rust::AssistantMessage {
+            claude_agent_sdk_rust::AssistantMessage {
+                message: AssistantMessageInner {
+                    content: vec![ContentBlock::Text(TextBlock {
+                        text: text.to_string(),
+                    })],
+                    id: None,
+                    model: "claude-test".into(),
+                    role: Some("assistant".into()),
+                    stop_reason: None,
+                    stop_sequence: None,
+                    message_type: None,
+                    usage: None,
+                },
+                parent_tool_use_id: None,
+                session_id: None,
+                error: None,
+            }
+        }
+
+        let mut events = Vec::new();
+        collect_assistant(msg("Got it."), &mut |ev| events.push(ev));
+        collect_assistant(msg("NO_REPLY"), &mut |ev| events.push(ev));
+        let texts = events
+            .into_iter()
+            .filter_map(|ev| match ev {
+                BackendEvent::AgentMessage(text) => Some(text),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(texts, vec!["Got it.", "NO_REPLY"]);
     }
 }

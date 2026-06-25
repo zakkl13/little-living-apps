@@ -78,7 +78,7 @@ struct SearchReq {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct SubagentReq {
     objective: String,
-    /// Project dir under the workspace (optional).
+    /// Optional subdirectory under the workspace. Omit for the main app; do not pass the instance name.
     project: Option<String>,
 }
 #[derive(Debug, Deserialize, JsonSchema)]
