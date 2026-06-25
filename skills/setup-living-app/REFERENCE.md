@@ -98,9 +98,9 @@ re-run. Check both: `env | grep -E 'OPENAI_API_KEY|CODEX_API_KEY|ANTHROPIC_API_K
 - **Codex (default):** the one-time `codex login --device-auth` stores auth under
   `CODEX_HOME=/var/lib/lila/codex` on the box, so it survives reboots. The user completes the device
   flow in their browser.
-- **Claude:** log the box into the Claude Pro/Max subscription with `claude setup-token`, or export
-  `CLAUDE_CODE_OAUTH_TOKEN`. Subscription terms note: don't *offer* this to other people without
-  Anthropic sign-off — single-owner personal use only.
+- **Claude:** run `claude setup-token`, complete the browser auth, then copy the printed one-year
+  token into the instance env as `CLAUDE_CODE_OAUTH_TOKEN=<token>`. Subscription terms note: don't
+  *offer* this to other people without Anthropic sign-off — single-owner personal use only.
 - Bootstrap installs both agent CLIs (`codex` and `claude`) regardless of the initially selected
   backend, so later `/backend` swaps should not need a package install. If a legacy host says the
   Claude CLI is missing, pull this version and re-run `sudo bash bootstrap.sh`.

@@ -254,7 +254,8 @@ else
 Almost there. Authenticate Claude (Claude Pro/Max subscription), then start the bot:
 
   sudo -u $SERVICE_USER -H $MISE exec -- claude setup-token
-  # (or set CLAUDE_CODE_OAUTH_TOKEN=... in $ENV_FILE)
+  # Copy the printed token into $ENV_FILE as:
+  #   CLAUDE_CODE_OAUTH_TOKEN=<token>
   sudo systemctl start lila-manager@$INSTANCE
 
 Follow the logs with:  journalctl -u lila-manager@$INSTANCE -f

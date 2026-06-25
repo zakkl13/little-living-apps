@@ -100,9 +100,9 @@ Work through these in order. Check each off before moving on.
 ### 8. One-time subscription login (human, then you start the manager)
 - bootstrap prints the exact command. For the default Codex backend it's:
   `sudo -u <user> -H CODEX_HOME=/var/lib/lila/codex ~/.local/bin/mise exec -- codex login --device-auth`
-  — run it and have the user complete the device-auth in their browser. For the Claude backend, log
-  the box into the Claude subscription with `claude setup-token` (or export
-  `CLAUDE_CODE_OAUTH_TOKEN`) instead.
+  — run it and have the user complete the device-auth in their browser. For the Claude backend, run
+  `claude setup-token`, have the user complete the browser auth, then copy the printed token into
+  the instance env as `CLAUDE_CODE_OAUTH_TOKEN=<token>`.
 - Then start it: `sudo systemctl start lila-manager@primary`.
 
 ### 9. (Optional) Publish behind a domain (human DNS + you)

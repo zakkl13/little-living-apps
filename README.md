@@ -213,7 +213,7 @@ same internal seams.
 |---|---|---|
 | Driver | `lila-codex` (vendored fork of `codex-client-sdk`, Rust) → `codex` CLI | `claude-agent-sdk-rust` → `claude` CLI |
 | Subscription | ChatGPT | Claude Pro/Max |
-| One-time host auth | `codex login --device-auth` | `claude setup-token` |
+| One-time host auth | `codex login --device-auth` | `claude setup-token`, then save the printed token as `CLAUDE_CODE_OAUTH_TOKEN` |
 | Pay-per-token key (must be **unset**) | `OPENAI_API_KEY` / `CODEX_API_KEY` | `ANTHROPIC_API_KEY` |
 
 *Why:* these are the two frontier coding agents you can drive off a flat-rate consumer subscription
