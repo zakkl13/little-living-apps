@@ -173,7 +173,7 @@ mod tests {
         assert!(p.toolchain.is_empty(), "node-react adds no app toolchain");
         assert!(p.serve_env.is_empty());
         assert!(p.worker_prompt.contains("React"));
-        assert!(p.manager_prompt.contains("{service}"));
+        assert!(p.manager_prompt.contains("{restart_cmd}"));
     }
 
     #[test]
