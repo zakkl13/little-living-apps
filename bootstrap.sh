@@ -193,6 +193,8 @@ ensure_env WORKSPACE_DIR "$WORKSPACE_DIR"
 ensure_env APP_PORT "${APP_PORT:-3000}"
 ensure_env INSPECTOR_PORT "${INSPECTOR_PORT:-9090}"
 ensure_env LILA_APP_SERVICE "lila-app@$INSTANCE"
+ensure_env CODEX_BIN "$CODEX_CLI"
+ensure_env CLAUDE_BIN "$CLAUDE_CLI"
 
 # --- 7. systemd manager unit (template) -------------------------------------------------------
 log "Installing systemd template unit lila-manager@.service; enabling lila-manager@$INSTANCE"

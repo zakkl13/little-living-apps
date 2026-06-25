@@ -184,7 +184,14 @@ fn locate_lila_binary() -> anyhow::Result<PathBuf> {
 
 /// Forward the few env vars the real backends need to reach the subscription (auth lives on disk).
 fn forward_auth_env(cmd: &mut Command) {
-    for key in ["CODEX_HOME", "CODEX_BIN", "MANAGER_MODEL", "WORKER_MODEL"] {
+    for key in [
+        "CODEX_HOME",
+        "CODEX_BIN",
+        "CLAUDE_CODE_OAUTH_TOKEN",
+        "CLAUDE_BIN",
+        "MANAGER_MODEL",
+        "WORKER_MODEL",
+    ] {
         if let Ok(val) = std::env::var(key)
             && !val.is_empty()
         {

@@ -36,7 +36,11 @@ impl BackendCliStatus {
             }
         };
         match &self.override_path {
-            Some(path) => format!("{} CLI NOT found at CODEX_BIN={path}. {hint}", self.bin),
+            Some(path) => format!(
+                "{} CLI NOT found at {}={path}. {hint}",
+                self.bin,
+                cli_override_key(self.backend)
+            ),
             None => format!("{} CLI NOT found on PATH. {hint}", self.bin),
         }
     }
@@ -57,15 +61,22 @@ pub fn ensure_backend_cli(cfg: &Config, backend: AgentBackend) -> Result<(), Str
     }
 }
 
+/// Return the exact executable path the selected backend should be launched through.
+pub fn resolve_backend_cli_path(cfg: &Config, backend: AgentBackend) -> Result<PathBuf, String> {
+    let status = backend_cli_status(cfg, backend);
+    status
+        .resolved_path
+        .clone()
+        .ok_or_else(|| status.missing_message())
+}
+
 fn backend_cli_status_with_path(
     cfg: &Config,
     backend: AgentBackend,
     path: Option<&OsStr>,
 ) -> BackendCliStatus {
     let bin = cli_bin(backend);
-    let override_path = (backend == AgentBackend::Codex)
-        .then(|| cfg.codex_path_override.clone())
-        .flatten();
+    let override_path = cli_override_path(cfg, backend);
     let resolved_path = match &override_path {
         Some(path) => executable_file(Path::new(path)).then(|| PathBuf::from(path)),
         None => which_on_path(bin, path),
@@ -82,6 +93,20 @@ fn cli_bin(backend: AgentBackend) -> &'static str {
     match backend {
         AgentBackend::Codex => "codex",
         AgentBackend::Claude => "claude",
+    }
+}
+
+fn cli_override_path(cfg: &Config, backend: AgentBackend) -> Option<String> {
+    match backend {
+        AgentBackend::Codex => cfg.codex_path_override.clone(),
+        AgentBackend::Claude => cfg.claude_path_override.clone(),
+    }
+}
+
+fn cli_override_key(backend: AgentBackend) -> &'static str {
+    match backend {
+        AgentBackend::Codex => "CODEX_BIN",
+        AgentBackend::Claude => "CLAUDE_BIN",
     }
 }
 
@@ -175,6 +200,24 @@ mod tests {
             status
                 .missing_message()
                 .contains("CODEX_BIN=/definitely/missing/codex")
+        );
+    }
+
+    #[test]
+    fn claude_bin_override_is_checked_directly() {
+        let mut env = Env::from([
+            ("TELEGRAM_BOT_TOKEN".into(), "tok".into()),
+            ("ALLOWED_USER_IDS".into(), "42".into()),
+        ]);
+        env.insert("CLAUDE_BIN".into(), "/definitely/missing/claude".into());
+        let cfg = Config::from_env(&env).unwrap();
+
+        let status = backend_cli_status_with_path(&cfg, AgentBackend::Claude, Some(OsStr::new("")));
+        assert!(!status.found());
+        assert!(
+            status
+                .missing_message()
+                .contains("CLAUDE_BIN=/definitely/missing/claude")
         );
     }
 }

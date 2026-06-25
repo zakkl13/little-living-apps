@@ -12,8 +12,11 @@ use claude_agent_sdk_rust::{
     ClaudeAgentOptions, ClaudeSDKClient, Effort, Message, SettingSource, SystemPrompt,
 };
 use futures::StreamExt;
+use std::path::PathBuf;
 
 use super::backend::{BackendError, BackendEvent, ManagerBackend, ManagerThread, TurnInput};
+use crate::backend_cli::resolve_backend_cli_path;
+use crate::config::AgentBackend;
 use crate::config::{Config, ReasoningEffort, sanitized_env};
 use crate::runtime::TokenUsage;
 use crate::workers::runner::friendly_claude_error;
@@ -49,11 +52,17 @@ pub struct ClaudeBackend {
     system_prompt: String,
     mcp_url: String,
     mcp_token: String,
+    cli_path: PathBuf,
 }
 
 impl ClaudeBackend {
-    pub fn new(cfg: &Config, mcp_url: &str, mcp_token: &str, system_prompt: String) -> Self {
-        Self {
+    pub fn new(
+        cfg: &Config,
+        mcp_url: &str,
+        mcp_token: &str,
+        system_prompt: String,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
             model: cfg
                 .manager_model
                 .clone()
@@ -62,7 +71,9 @@ impl ClaudeBackend {
             system_prompt,
             mcp_url: mcp_url.to_string(),
             mcp_token: mcp_token.to_string(),
-        }
+            cli_path: resolve_backend_cli_path(cfg, AgentBackend::Claude)
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+        })
     }
 
     fn options(&self, resume: Option<String>) -> ClaudeAgentOptions {
@@ -87,6 +98,7 @@ impl ClaudeBackend {
             .effort(self.effort)
             .allowed_tools(allowed)
             .mcp_servers(servers)
+            .cli_path(self.cli_path.clone())
             .setting_sources(Vec::<SettingSource>::new())
             .env(sanitized_env(&[]))
             .include_partial_messages(false)

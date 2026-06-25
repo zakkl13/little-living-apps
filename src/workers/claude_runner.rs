@@ -7,21 +7,27 @@ use async_trait::async_trait;
 use claude_agent_sdk_rust::types::content::ContentBlock;
 use claude_agent_sdk_rust::{ClaudeAgentOptions, Message, PermissionMode, query};
 use futures::StreamExt;
+use std::path::PathBuf;
 
 use super::runner::{LoginStatus, RunArgs, RunOutcome, Runner, RunnerError, friendly_claude_error};
+use crate::backend_cli::resolve_backend_cli_path;
+use crate::config::AgentBackend;
 use crate::config::{Config, sanitized_env};
 use crate::runtime::TokenUsage;
 
 /// Runs single-shot Claude workers.
 pub struct ClaudeRunner {
     model: Option<String>,
+    cli_path: PathBuf,
 }
 
 impl ClaudeRunner {
-    pub fn new(cfg: &Config) -> Self {
-        Self {
+    pub fn new(cfg: &Config) -> anyhow::Result<Self> {
+        Ok(Self {
             model: cfg.worker_model.clone(),
-        }
+            cli_path: resolve_backend_cli_path(cfg, AgentBackend::Claude)
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+        })
     }
 }
 
@@ -35,6 +41,7 @@ impl Runner for ClaudeRunner {
         let options = ClaudeAgentOptions::builder()
             .cwd(args.cwd.clone())
             .permission_mode(PermissionMode::BypassPermissions)
+            .cli_path(self.cli_path.clone())
             .env(sanitized_env(&[]))
             .include_partial_messages(false)
             .model(model)

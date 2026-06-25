@@ -167,8 +167,10 @@ pub struct Config {
     pub sandbox_mode: SandboxMode,
     /// Telegram Bot API base URL (overridden in tests).
     pub telegram_api_base_url: String,
-    /// Absolute path to a specific codex binary; `None` = SDK default.
+    /// Absolute path to a specific codex binary; `None` = resolve from PATH / SDK default.
     pub codex_path_override: Option<String>,
+    /// Absolute path to a specific claude binary; `None` = resolve from PATH.
+    pub claude_path_override: Option<String>,
 
     // --- manager tier ---
     /// Manager memory repo, exposed as `/memories` (git markdown + FTS).
@@ -393,6 +395,7 @@ impl Config {
                 .trim_end_matches('/')
                 .to_string(),
             codex_path_override: get_trimmed(env, "CODEX_BIN"),
+            claude_path_override: get_trimmed(env, "CLAUDE_BIN"),
             memory_dir: paths.memory_dir,
             manager_dir: paths.manager_dir,
             manager_state_dir: paths.manager_state_dir,
@@ -459,6 +462,16 @@ mod tests {
         let cfg = Config::from_env(&env).expect("loads");
         assert_eq!(cfg.manager_model.as_deref(), Some(CLAUDE_MANAGER_MODEL));
         assert_eq!(cfg.worker_model.as_deref(), Some(CLAUDE_WORKER_MODEL));
+    }
+
+    #[test]
+    fn cli_path_overrides_are_loaded() {
+        let mut env = base_env();
+        env.insert("CODEX_BIN".into(), "/opt/bin/codex".into());
+        env.insert("CLAUDE_BIN".into(), "/opt/bin/claude".into());
+        let cfg = Config::from_env(&env).expect("loads");
+        assert_eq!(cfg.codex_path_override.as_deref(), Some("/opt/bin/codex"));
+        assert_eq!(cfg.claude_path_override.as_deref(), Some("/opt/bin/claude"));
     }
 
     #[test]

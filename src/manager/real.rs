@@ -39,7 +39,7 @@ pub async fn build_backend(
 
     let backend: Box<dyn ManagerBackend> = match cfg.agent_backend {
         AgentBackend::Codex => Box::new(CodexBackend::new(cfg, &mcp.url, &token)?),
-        AgentBackend::Claude => Box::new(ClaudeBackend::new(cfg, &mcp.url, &token, agents_md)),
+        AgentBackend::Claude => Box::new(ClaudeBackend::new(cfg, &mcp.url, &token, agents_md)?),
     };
     Ok((backend, mcp))
 }

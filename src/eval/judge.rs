@@ -12,7 +12,8 @@ use codex::{
 };
 use regex::Regex;
 
-use crate::config::sanitized_env;
+use crate::backend_cli::resolve_backend_cli_path;
+use crate::config::{AgentBackend, Config, sanitized_env};
 use crate::eval::report::TrialReport;
 use crate::eval::transcript::{TimelineEntry, WorkerPrompt};
 use crate::runtime::TraceBlock;
@@ -166,8 +167,17 @@ async fn judge_claude(prompt: String) -> anyhow::Result<String> {
     use claude_agent_sdk_rust::{ClaudeAgentOptions, Message, query};
     use futures::StreamExt;
 
+    let mut env = crate::config::process_env();
+    env.entry("TELEGRAM_BOT_TOKEN".into())
+        .or_insert_with(|| "eval-token".into());
+    env.entry("ALLOWED_USER_IDS".into())
+        .or_insert_with(|| "1".into());
+    let cfg = Config::from_env(&env)?;
+    let cli_path =
+        resolve_backend_cli_path(&cfg, AgentBackend::Claude).map_err(|e| anyhow::anyhow!("{e}"))?;
     let options = ClaudeAgentOptions::builder()
         .allowed_tools(Vec::new())
+        .cli_path(cli_path)
         .env(sanitized_env(&[]))
         .include_partial_messages(false)
         .model("claude-sonnet-4-6".to_string())
