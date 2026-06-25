@@ -2,10 +2,9 @@
 //! over SSM on the live host.
 
 use crate::backend_cli::backend_cli_status;
-use crate::config::Config;
 
 pub async fn run() -> i32 {
-    let cfg = match Config::load() {
+    let cfg = match super::run::load_config_with_override() {
         Ok(cfg) => cfg,
         Err(err) => {
             eprintln!("CONFIG ERROR: {err}");

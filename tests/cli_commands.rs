@@ -131,6 +131,24 @@ fn doctor_checks_the_claude_backend() {
         .stderr(predicate::str::contains("claude CLI NOT found"));
 }
 
+#[test]
+fn doctor_honors_persisted_backend_override() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("backend"), "claude\n").unwrap();
+    // CLAUDE_BIN points at an existing file (the lila binary itself), so the override branch resolves.
+    let existing = assert_cmd::cargo::cargo_bin("lila");
+    lila()
+        .arg("doctor")
+        .env("TELEGRAM_BOT_TOKEN", "tok")
+        .env("ALLOWED_USER_IDS", "42")
+        .env("MANAGER_STATE_DIR", tmp.path())
+        .env("CLAUDE_BIN", existing)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("config:   OK (claude backend)"))
+        .stdout(predicate::str::contains("claude CLI found"));
+}
+
 // --- `lila memory view|search` -----------------------------------------------------------------
 
 /// A `lila memory ...` command with a valid config pointed at a throwaway memory store. The

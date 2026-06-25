@@ -164,7 +164,7 @@ fn using_fake_backend() -> bool {
 
 /// Load config, applying any persisted `/backend` override via the env map (no `set_var`, so the
 /// `forbid(unsafe_code)` rule holds).
-fn load_config_with_override() -> Result<Config, crate::config::ConfigError> {
+pub(crate) fn load_config_with_override() -> Result<Config, crate::config::ConfigError> {
     let mut env = crate::config::process_env();
     let state_dir = env
         .get("MANAGER_STATE_DIR")
