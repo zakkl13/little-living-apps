@@ -1,0 +1,94 @@
+services:
+  manager:
+    build:
+      context: .
+    image: ${LILA_IMAGE:-lila-rs:dockerize}
+    command: ["lila", "run"]
+    env_file:
+      - ${LILA_ENV_FILE:-.env}
+    environment:
+      LILA_INSTANCE: ${LILA_INSTANCE:-primary}
+      WORKSPACE_DIR: /workspace
+      MEMORY_DIR: /var/lib/lila/memory
+      MANAGER_STATE_DIR: /var/lib/lila/state
+      CODEX_HOME: /var/lib/lila/codex
+      CODEX_SANDBOX_MODE: ${CODEX_SANDBOX_MODE:-danger-full-access}
+      LILA_APP_RESTART_CMD: ${LILA_APP_RESTART_CMD:-docker compose restart app}
+      APP_PORT: ${APP_PORT:-3000}
+      INSPECTOR_PORT: ${INSPECTOR_PORT:-9090}
+    volumes:
+      - workspace:/workspace
+      - memory:/var/lib/lila/memory
+      - state:/var/lib/lila/state
+      - codex-home:/var/lib/lila/codex
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    depends_on:
+      - app
+
+  app:
+    image: ${LILA_IMAGE:-lila-rs:dockerize}
+    env_file:
+      - ${LILA_ENV_FILE:-.env}
+    environment:
+      LILA_INSTANCE: ${LILA_INSTANCE:-primary}
+      WORKSPACE_DIR: /workspace
+      APP_PORT: ${APP_PORT:-3000}
+      PORT: ${APP_PORT:-3000}
+    working_dir: /workspace
+    command:
+      - bash
+      - -lc
+      - |
+        eval "$(cd /opt/lila && lila stack "${LILA_STACK:-rails-pwa}")"
+        while IFS= read -r kv; do
+          [ -n "$kv" ] && export "$kv"
+        done <<< "$LILA_STACK_SERVE_ENV"
+        exec bash -lc "$LILA_STACK_SERVE_EXEC"
+    volumes:
+      - workspace:/workspace
+    expose:
+      - "${APP_PORT:-3000}"
+    ports:
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-3000}:${APP_PORT:-3000}"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    profiles: ["caddy"]
+    env_file:
+      - ${LILA_ENV_FILE:-.env}
+    environment:
+      LILA_DOMAIN: ${LILA_DOMAIN}
+      APP_PORT: ${APP_PORT:-3000}
+      INSPECTOR_PORT: ${INSPECTOR_PORT:-9090}
+    command:
+      - caddy
+      - reverse-proxy
+      - --from
+      - ${LILA_DOMAIN}
+      - --to
+      - app:${APP_PORT:-3000}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  workspace:
+    name: ${LILA_INSTANCE:-primary}-workspace
+  memory:
+    name: ${LILA_INSTANCE:-primary}-memory
+  state:
+    name: ${LILA_INSTANCE:-primary}-state
+  codex-home:
+    name: ${LILA_INSTANCE:-primary}-codex-home
+  caddy-data:
+    name: ${LILA_INSTANCE:-primary}-caddy-data
+  caddy-config:
+    name: ${LILA_INSTANCE:-primary}-caddy-config
