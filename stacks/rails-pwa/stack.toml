@@ -15,7 +15,7 @@ script = "scaffold.sh"
 # bin/new-app prefixes the mise wrapper for the systemd unit; the eval probe runs it directly. It
 # binds localhost and reads ${APP_PORT} from the environment.
 [serve]
-exec = "bin/rails server -b 127.0.0.1 -p ${APP_PORT}"
+exec = "bin/rails server -b ${APP_HOST} -p ${APP_PORT}"
 # Process environment for the serve unit (rendered as systemd `Environment=` lines).
 env = { RAILS_ENV = "development" }
 

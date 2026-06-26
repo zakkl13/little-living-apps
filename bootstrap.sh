@@ -191,6 +191,8 @@ ensure_env() { # ensure_env KEY VALUE — replace KEY in $ENV_FILE if present, e
 }
 ensure_env WORKSPACE_DIR "$WORKSPACE_DIR"
 ensure_env APP_PORT "${APP_PORT:-3000}"
+ensure_env APP_HOST "${APP_HOST:-127.0.0.1}"
+ensure_env LILA_APP_URL "http://localhost:${APP_PORT:-3000}"
 ensure_env INSPECTOR_PORT "${INSPECTOR_PORT:-9090}"
 ensure_env LILA_APP_SERVICE "lila-app@$INSTANCE"
 ensure_env LILA_APP_RESTART_CMD "\"sudo systemctl restart lila-app@$INSTANCE\""

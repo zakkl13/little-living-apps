@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Scaffold the app for one little-living-apps instance.
+#
+# This script is supervisor-neutral: it creates or refreshes the workspace app, but it does not
+# install, start, or restart a process supervisor. systemd hosts wrap it with bin/new-app; Docker
+# calls it directly from the app container before serving.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+log() { printf '\033[1;35m[lila-new-app]\033[0m %s\n' "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+INSTANCE="${LILA_INSTANCE:-primary}"
+APP_DIR="${WORKSPACE_DIR:-${APP_DIR:-/srv/$INSTANCE}}"
+APP_PORT="${APP_PORT:-3000}"
+DOMAIN="${LILA_DOMAIN:-}"
+LILA_STACK="${LILA_STACK:-rails-pwa}"
+LILA_DESIGN="${LILA_DESIGN:-random}"
+MISE="${MISE:-$REPO_DIR/bin/mise-shim}"
+LILA_BIN="${LILA_BIN:-/opt/lila/bin/lila}"
+[[ -x "$LILA_BIN" ]] || LILA_BIN="$REPO_DIR/target/release/lila"
+[[ -x "$LILA_BIN" ]] || LILA_BIN="$REPO_DIR/target/debug/lila"
+[[ -x "$LILA_BIN" ]] || die "lila binary not found (looked in /opt/lila/bin and $REPO_DIR/target/*)."
+[[ -x "$MISE" ]] || die "MISE shim or binary not found at $MISE."
+
+mkdir -p "$APP_DIR"
+if ! git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$APP_DIR" init -q
+  git -C "$APP_DIR" config user.email 'lila@localhost'
+  git -C "$APP_DIR" config user.name 'Little Living Apps'
+fi
+
+log "Active stack: $LILA_STACK"
+eval "$(cd "$REPO_DIR" && "$LILA_BIN" stack "$LILA_STACK")" ||
+  die "Unknown stack '$LILA_STACK' (expected a directory under $REPO_DIR/stacks/)."
+[[ -f "$LILA_STACK_SCAFFOLD" ]] || die "Stack '$LILA_STACK' scaffold script missing: $LILA_STACK_SCAFFOLD"
+
+LILA_DESIGN_BRAND='' LILA_DESIGN_FILE='' LILA_DESIGN_DIR='' LILA_DESIGN_POOL='' LILA_DESIGN_SOURCE='' LILA_DESIGN_SEED='' LILA_DESIGN_COMMIT=''
+log "Drawing a design system (LILA_DESIGN=$LILA_DESIGN)"
+eval "$(cd "$REPO_DIR" && "$LILA_BIN" design draw "$LILA_DESIGN")" ||
+  die "Could not resolve LILA_DESIGN='$LILA_DESIGN' against the catalog."
+log "Active design: $LILA_DESIGN_BRAND (pool=$LILA_DESIGN_POOL, source=$LILA_DESIGN_SOURCE)"
+
+log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
+cd "$APP_DIR"
+env PATH="$REPO_DIR/bin:$PATH" \
+    LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" WORKSPACE_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
+    LILA_DOMAIN="$DOMAIN" SKIP_AUTH="${SKIP_AUTH:-}" \
+    SERVICE_USER="${SERVICE_USER:-}" MISE="$MISE" LILA_BIN="$LILA_BIN" \
+    LILA_DESIGN_BRAND="$LILA_DESIGN_BRAND" LILA_DESIGN_FILE="$LILA_DESIGN_FILE" \
+    LILA_DESIGN_DIR="$LILA_DESIGN_DIR" \
+    LILA_DESIGN_POOL="$LILA_DESIGN_POOL" LILA_DESIGN_SOURCE="$LILA_DESIGN_SOURCE" \
+    LILA_DESIGN_SEED="$LILA_DESIGN_SEED" LILA_DESIGN_COMMIT="$LILA_DESIGN_COMMIT" \
+    bash "$LILA_STACK_SCAFFOLD"

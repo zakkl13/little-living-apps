@@ -395,6 +395,7 @@ fn serve_probe_script(profile: &StackProfile, path: &str, status: u16) -> String
         r#"set -e
 {env_exports}export APP_PORT={port}
 export PORT={port}
+export APP_HOST=127.0.0.1
 {prepare}{serve} >/tmp/lila-eval-serve.$$.log 2>&1 &
 PID=$!
 ok=0

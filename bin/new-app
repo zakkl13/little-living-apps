@@ -1,10 +1,7 @@
 #!/usr/bin/env bash
-# bin/new-app — scaffold ONE instance's app and run it under systemd. STACK-GENERIC: this script owns
-# the framework contract (instance dir /srv/<instance>, env file, service user, systemd install/start)
-# and delegates the app-creation body to the ACTIVE STACK's scaffold script. The stack
-# (stacks/<name>/) decides the kind of app — Rails 8 + PWA by default, Node + React, or any directory
-# you drop in — with zero changes here. The serve command + environment come from the stack's
-# stack.toml, read via `lila stack`.
+# bin/new-app — scaffold ONE instance's app and run it under systemd. The app creation itself lives
+# in bin/lila-new-app so Docker and systemd use the same scaffold path; this wrapper owns only the
+# systemd service install/start contract.
 #
 # Always runs in INSTANCE mode: every app — including the primary — is a systemd template instance
 # lila-app@<instance> serving /srv/<instance> and reading /etc/lila/<instance>.env. The caller sets
@@ -53,8 +50,6 @@ DOMAIN="${LILA_DOMAIN:-$(read_env LILA_DOMAIN)}"
 # framework default. Resolve its contract via the compiled binary (no TOML parsing in bash).
 LILA_STACK="${LILA_STACK:-$(read_env LILA_STACK)}"
 LILA_STACK="${LILA_STACK:-rails-pwa}"
-# The active design choice (safe blind draw by default). Resolved against the vendored catalog below,
-# only if the stack opts into the design system.
 LILA_DESIGN="${LILA_DESIGN:-$(read_env LILA_DESIGN)}"
 LILA_DESIGN="${LILA_DESIGN:-random}"
 LILA_BIN="${LILA_BIN:-/opt/lila/bin/lila}"
@@ -68,34 +63,13 @@ eval "$(cd "$REPO_DIR" && "$LILA_BIN" stack "$LILA_STACK")" ||
   die "Unknown stack '$LILA_STACK' (expected a directory under $REPO_DIR/stacks/)."
 [[ -f "$LILA_STACK_SCAFFOLD" ]] || die "Stack '$LILA_STACK' scaffold script missing: $LILA_STACK_SCAFFOLD"
 
-# --- 0b. Draw a design system ------------------------------------------------------------------
-# Design is framework-generic, not a per-stack opt-in: every instance draws one. A blind `random` is
-# bounded to the safe default pool by `lila design draw`; a `<brand>` pin reaches any system. The chosen
-# system + its package dir are exported into the scaffold env so a stack that renders UI turns it into
-# real tokens and writes design.lock; a stack whose scaffold ignores it simply doesn't.
-LILA_DESIGN_BRAND='' LILA_DESIGN_FILE='' LILA_DESIGN_DIR='' LILA_DESIGN_POOL='' LILA_DESIGN_SOURCE='' LILA_DESIGN_SEED='' LILA_DESIGN_COMMIT=''
-log "Drawing a design system (LILA_DESIGN=$LILA_DESIGN)"
-eval "$(cd "$REPO_DIR" && "$LILA_BIN" design draw "$LILA_DESIGN")" ||
-  die "Could not resolve LILA_DESIGN='$LILA_DESIGN' against the catalog."
-log "Active design: $LILA_DESIGN_BRAND (pool=$LILA_DESIGN_POOL, source=$LILA_DESIGN_SOURCE)"
-
-# --- 1. Scaffold the app (delegated to the active stack) ---------------------------------------
-# Run the stack's scaffold body as the service user, in the app dir, with the framework's variables in
-# the environment. The stack owns everything app-specific (install steps, generators, post-tweaks).
-# The LILA_DESIGN_* draw + LILA_BIN are passed through so a stack's render can copy the system's curated
-# tokens.css + reference package (LILA_DESIGN_DIR) and write design.lock.
-# Put mise on PATH for scaffold-time hooks such as RubyGems' `mise reshim`.
-log "Scaffolding the app via $LILA_STACK scaffold ($APP_DIR)"
-( cd "$APP_DIR" && sudo -u "$SERVICE_USER" -H \
-    env PATH="$USER_HOME/.local/bin:$PATH" \
-        LILA_INSTANCE="$INSTANCE" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
-        LILA_DOMAIN="$DOMAIN" SKIP_AUTH="${SKIP_AUTH:-}" \
-        SERVICE_USER="$SERVICE_USER" MISE="$MISE" LILA_BIN="$LILA_BIN" \
-        LILA_DESIGN_BRAND="$LILA_DESIGN_BRAND" LILA_DESIGN_FILE="$LILA_DESIGN_FILE" \
-        LILA_DESIGN_DIR="$LILA_DESIGN_DIR" \
-        LILA_DESIGN_POOL="$LILA_DESIGN_POOL" LILA_DESIGN_SOURCE="$LILA_DESIGN_SOURCE" \
-        LILA_DESIGN_SEED="$LILA_DESIGN_SEED" LILA_DESIGN_COMMIT="$LILA_DESIGN_COMMIT" \
-    bash "$LILA_STACK_SCAFFOLD" )
+# --- 1. Scaffold the app (supervisor-neutral) --------------------------------------------------
+log "Scaffolding the app via bin/lila-new-app ($APP_DIR)"
+sudo -u "$SERVICE_USER" -H env PATH="$USER_HOME/.local/bin:$PATH" \
+  LILA_INSTANCE="$INSTANCE" WORKSPACE_DIR="$APP_DIR" APP_DIR="$APP_DIR" APP_PORT="$APP_PORT" \
+  LILA_DOMAIN="$DOMAIN" LILA_STACK="$LILA_STACK" LILA_DESIGN="$LILA_DESIGN" \
+  SKIP_AUTH="${SKIP_AUTH:-}" SERVICE_USER="$SERVICE_USER" MISE="$MISE" LILA_BIN="$LILA_BIN" \
+  bash "$REPO_DIR/bin/lila-new-app"
 
 # --- 2. Install + start the app service ---------------------------------------------------------
 # Template unit: host-level constants (__USER__/__MISE__) and the stack's serve command (__EXEC__) +

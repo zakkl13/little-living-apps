@@ -39,7 +39,10 @@ RUN npm install -g @openai/codex @anthropic-ai/claude-code \
     && npx playwright install chromium \
     && npx playwright install-deps chromium
 
+RUN gem install rails -v '~> 8.0' --no-document
+
 COPY --from=builder /src/target/release/lila /opt/lila/bin/lila
+COPY bin /opt/lila/bin
 COPY stacks /opt/lila/stacks
 COPY design /opt/lila/design
 

@@ -1,5 +1,6 @@
 services:
   manager:
+    container_name: ${LILA_INSTANCE:-primary}-manager
     build:
       context: .
     image: ${LILA_IMAGE:-lila-rs:dockerize}
@@ -14,6 +15,7 @@ services:
       CODEX_HOME: /var/lib/lila/codex
       CODEX_SANDBOX_MODE: ${CODEX_SANDBOX_MODE:-danger-full-access}
       LILA_APP_RESTART_CMD: ${LILA_APP_RESTART_CMD:-docker compose restart app}
+      LILA_APP_URL: http://app:${APP_PORT:-3000}
       APP_PORT: ${APP_PORT:-3000}
       INSPECTOR_PORT: ${INSPECTOR_PORT:-9090}
     volumes:
@@ -27,6 +29,7 @@ services:
       - app
 
   app:
+    container_name: ${LILA_INSTANCE:-primary}-app
     image: ${LILA_IMAGE:-lila-rs:dockerize}
     env_file:
       - ${LILA_ENV_FILE:-.env}
@@ -34,12 +37,14 @@ services:
       LILA_INSTANCE: ${LILA_INSTANCE:-primary}
       WORKSPACE_DIR: /workspace
       APP_PORT: ${APP_PORT:-3000}
+      APP_HOST: 0.0.0.0
       PORT: ${APP_PORT:-3000}
     working_dir: /workspace
     command:
       - bash
       - -lc
       - |
+        lila-new-app
         eval "$(cd /opt/lila && lila stack "${LILA_STACK:-rails-pwa}")"
         while IFS= read -r kv; do
           [ -n "$kv" ] && export "$kv"
@@ -54,6 +59,7 @@ services:
     restart: unless-stopped
 
   caddy:
+    container_name: ${LILA_INSTANCE:-primary}-caddy
     image: caddy:2
     profiles: ["caddy"]
     env_file:

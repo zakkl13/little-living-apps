@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Tiny compatibility shim for stack scaffold scripts inside the Docker image.
+# Host installs use real mise; Docker images already put Ruby/Node/tooling on PATH.
+set -euo pipefail
+
+case "${1:-}" in
+  exec)
+    shift
+    [[ "${1:-}" == "--" ]] && shift
+    exec "$@"
+    ;;
+  which)
+    shift
+    command -v "$1"
+    ;;
+  *)
+    echo "mise-shim supports only: exec -- <cmd> and which <cmd>" >&2
+    exit 2
+    ;;
+esac
