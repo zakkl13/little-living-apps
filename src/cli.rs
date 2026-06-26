@@ -36,8 +36,8 @@ pub enum Command {
         #[command(subcommand)]
         action: McpAction,
     },
-    /// Print a stack profile's fields as shell assignments, so `bin/new-app` and `bootstrap.sh` can
-    /// read the active stack (`stacks/<name>/stack.toml`) without parsing TOML in bash:
+    /// Print a stack profile's fields as shell assignments, so Docker and eval can read the active
+    /// stack (`stacks/<name>/stack.toml`) without parsing TOML in bash:
     /// `eval "$(lila stack rails-pwa)"`.
     Stack {
         /// The stack name (a directory under `stacks/`).

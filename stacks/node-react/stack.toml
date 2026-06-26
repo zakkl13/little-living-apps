@@ -10,8 +10,8 @@ display = "Node + React (PWA)"
 [scaffold]
 script = "scaffold.sh"
 
-# Portable serve command. Docker and eval run it directly; legacy systemd wraps it with mise.
-# server.js reads the port from $PORT / $APP_PORT.
+# Portable serve command. Docker and eval run it directly. server.js reads the port from
+# $PORT / $APP_PORT.
 [serve]
 exec = "node server.js"
 env = {}

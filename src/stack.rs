@@ -22,7 +22,7 @@ pub struct StackProfile {
     pub name: String,
     /// Human-readable label (e.g. "Rails 8 + PWA").
     pub display: String,
-    /// App-language toolchain pins, merged into bootstrap's `mise use -g …` (node is always added).
+    /// App-language toolchain pins documented by the stack contract.
     pub toolchain: BTreeMap<String, String>,
     /// Absolute path to the per-stack scaffold script `lila-new-app` runs at instance creation.
     pub scaffold_script: PathBuf,

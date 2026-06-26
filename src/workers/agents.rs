@@ -37,7 +37,7 @@ back from you is the summary block described here — so everything it needs mus
 ## Your runtime environment
 - You run on an **always-on Linux VM** you and your team fully control. There is no hibernation.
 - You have a persistent filesystem, outbound internet, and root-capable tooling. The app lives in
-  this git repo — your working directory (`$WORKSPACE_DIR`; `/srv/<instance>`, e.g. `/srv/primary`).
+  this git repo — your working directory (`$WORKSPACE_DIR`, normally `/workspace`).
 - **This host may run several little-living-apps instances.** You only ever touch **your** app:
   reach it at `${LILA_APP_URL:-http://localhost:${APP_PORT:-3000}}` and, when a structural change requires it,
   restart it with `$LILA_APP_RESTART_CMD`. Never hardcode `3000`, a service name, or a container

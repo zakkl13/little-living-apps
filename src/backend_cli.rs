@@ -29,10 +29,10 @@ impl BackendCliStatus {
     pub fn missing_message(&self) -> String {
         let hint = match self.backend {
             AgentBackend::Codex => {
-                "Re-run `sudo bash bootstrap.sh`, or install `@openai/codex` under the service user's mise-managed Node."
+                "Use the Docker image built from this repo, or install `@openai/codex` on PATH."
             }
             AgentBackend::Claude => {
-                "Re-run `sudo bash bootstrap.sh`, or install `@anthropic-ai/claude-code` under the service user's mise-managed Node."
+                "Use the Docker image built from this repo, or install `@anthropic-ai/claude-code` on PATH."
             }
         };
         match &self.override_path {

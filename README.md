@@ -49,9 +49,8 @@ Little Living Apps is in early beta: the framework is moving quickly, and setup 
 change. It is usable today, already powers [lillivinapps.zakk.io](https://lillivinapps.zakk.io),
 and is being actively dogfooded across many other personal software ideas.
 
-The supported production install target today is Docker Compose on a fresh Linux VPS. The older
-systemd install path still exists for current hosts, but new instances are designed around one
-Compose project per living app.
+The supported production install target today is Docker Compose on a fresh Linux VPS: one Compose
+project per living app.
 
 ### The personal software era
 
@@ -91,7 +90,7 @@ secrets it can't invent.
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-bin/new-instance-docker primary           # build image, create volumes, start manager + app
+bin/new-instance primary                  # build image, create volumes, start manager + app
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
 docker compose --env-file .docker/primary.env exec manager codex login --device-auth
@@ -100,7 +99,7 @@ docker compose --env-file .docker/primary.env restart manager
 docker compose --env-file .docker/primary.env logs -f manager
 ```
 
-`bin/new-instance-docker` writes `.docker/<instance>.env`, creates instance-prefixed named volumes,
+`bin/new-instance` writes `.docker/<instance>.env`, creates instance-prefixed named volumes,
 and starts one Compose project. The app container runs `lila-new-app` before serving, so a fresh
 workspace is scaffolded automatically and later restarts keep the same persistent volume.
 
@@ -125,7 +124,7 @@ Each instance gets its own manager, Telegram bot, workspace, ports, and domain:
 ```bash
 LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
      TELEGRAM_BOT_TOKEN=<new-bot-token> \
-     bin/new-instance-docker cm
+     bin/new-instance cm
 ```
 
 Every instance, the first one (`primary`) and every addition, runs as its own Compose project with

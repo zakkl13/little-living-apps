@@ -1,7 +1,7 @@
 name    = "rails-pwa"
 display = "Rails 8 + PWA"
 
-# App toolchain pin for legacy host installs; the Docker image already includes Ruby.
+# App toolchain pin documented for stack authors; the Docker image already includes Ruby.
 [toolchain]
 ruby = "3.3"
 
@@ -11,8 +11,8 @@ ruby = "3.3"
 [scaffold]
 script = "scaffold.sh"
 
-# Portable serve command. Docker runs it directly; legacy systemd wraps it with mise; eval runs it
-# directly. APP_HOST is 0.0.0.0 in Docker and 127.0.0.1 for host/private probes.
+# Portable serve command. Docker and eval run it directly. APP_HOST is 0.0.0.0 in Docker and
+# 127.0.0.1 for private probes.
 [serve]
 exec = "bin/rails server -b ${APP_HOST} -p ${APP_PORT}"
 # Process environment for the app process.

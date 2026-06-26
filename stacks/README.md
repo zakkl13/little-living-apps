@@ -5,10 +5,9 @@ PWA by default, a zero-build Node + React PWA alongside it, or anything you add.
 not code** — a directory under `stacks/`, read by the generic framework. Adding one needs **no Rust
 changes and no recompile**.
 
-Pick the active stack per instance with `LILA_STACK` (default `rails-pwa`), set in `.env` /
-`.docker/<instance>.env` (or `/etc/lila/<instance>.env` on legacy systemd hosts). The same value
-drives six things from one source of truth: the scaffold, the serve command, the app toolchain, the
-manager prompt, the worker prompt, and the eval fixture.
+Pick the active stack per instance with `LILA_STACK` (default `rails-pwa`), set in `.env` or
+`.docker/<instance>.env`. The same value drives six things from one source of truth: the scaffold,
+the serve command, the app toolchain, the manager prompt, the worker prompt, and the eval fixture.
 
 ## Layout
 
@@ -30,8 +29,8 @@ stacks/
 name    = "rails-pwa"          # must match the directory name
 display = "Rails 8 + PWA"      # human-readable label
 
-# App-language toolchain pins, merged into bootstrap's `mise use -g …`. Node is ALWAYS installed by
-# the framework (it runs the agent CLI + Playwright validation), so list only what the app adds.
+# App-language toolchain pins documented by the stack contract. The Docker image owns the installed
+# runtime set.
 # Omit the section entirely for a Node-only stack.
 [toolchain]
 ruby = "3.3"
@@ -43,8 +42,8 @@ ruby = "3.3"
 script = "scaffold.sh"
 
 # How to start the app. Portable command: it reads ${APP_HOST} and ${APP_PORT} from the environment.
-# Docker runs it directly after lila-new-app; bin/new-app wraps it with mise for legacy systemd;
-# the eval probe runs it directly. `env` is exported by each supervisor/probe.
+# Docker runs it directly after lila-new-app; the eval probe runs it directly. `env` is exported by
+# each runner.
 [serve]
 exec = "bin/rails server -b ${APP_HOST} -p ${APP_PORT}"
 env  = { RAILS_ENV = "development" }
@@ -124,5 +123,5 @@ proven by `cargo test` (`tests/eval_graders.rs`, `tests/eval_rails.rs`).
    needs a one-time build.
 3. Smoke-test the contract: `lila stack <name>` should print the `LILA_STACK_*` assignments without
    error, and `cargo test` (the stack-loader unit tests parse every in-repo stack).
-4. Run it: set `LILA_STACK=<name>` and start an instance with `bin/new-instance-docker`. No Rust
+4. Run it: set `LILA_STACK=<name>` and start an instance with `bin/new-instance`. No Rust
    edits, no rebuild.

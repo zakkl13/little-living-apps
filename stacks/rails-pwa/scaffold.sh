@@ -21,7 +21,7 @@ if [[ -f "$APP_DIR/config/application.rb" ]]; then
   log "Rails app already present at $APP_DIR — skipping scaffold"
 else
   log "Scaffolding a Rails 8 app at $APP_DIR (SQLite + Solid + Hotwire + PWA defaults)"
-  # --skip-git: bootstrap already inited the repo. Keep Rails 8 defaults otherwise (that IS the
+  # --skip-git: lila-new-app already inited the repo. Keep Rails 8 defaults otherwise (that IS the
   # opinionated stack); the agent adds everything else.
   "$MISE" exec -- rails new . --skip-git
 

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Scaffold the app for one little-living-apps instance.
 #
-# This script is supervisor-neutral: it creates or refreshes the workspace app, but it does not
-# install, start, or restart a process supervisor. systemd hosts wrap it with bin/new-app; Docker
-# calls it directly from the app container before serving.
+# This script creates or refreshes the workspace app. Docker calls it directly from the app container
+# before serving.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,7 +11,7 @@ log() { printf '\033[1;35m[lila-new-app]\033[0m %s\n' "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 INSTANCE="${LILA_INSTANCE:-primary}"
-APP_DIR="${WORKSPACE_DIR:-${APP_DIR:-/srv/$INSTANCE}}"
+APP_DIR="${WORKSPACE_DIR:-${APP_DIR:-/workspace}}"
 APP_PORT="${APP_PORT:-3000}"
 DOMAIN="${LILA_DOMAIN:-}"
 LILA_STACK="${LILA_STACK:-rails-pwa}"
