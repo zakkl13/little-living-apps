@@ -1,0 +1,11 @@
+.git
+.docker
+target
+dogfooding
+claude-plans
+video-assets-staging
+video-assets-boxes
+eval/results
+coverage.json
+*.profraw
+.DS_Store

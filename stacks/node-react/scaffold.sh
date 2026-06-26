@@ -3,7 +3,7 @@
 # zero-dependency Node HTTP server that serves a no-build React frontend (React/ReactDOM from a CDN,
 # transformed in the browser). No bundler, no `npm install` — a single file the agent builds on top of.
 #
-# Invoked by bin/new-app as the SERVICE USER, with the cwd already at the app dir and these vars in
+# Invoked by lila-new-app, with the cwd already at the app dir and these vars in
 # the environment: LILA_INSTANCE, APP_DIR, APP_PORT, LILA_DOMAIN, SKIP_AUTH, SERVICE_USER, MISE.
 # Idempotent: if the app is already scaffolded (server.js present) it is a no-op.
 set -euo pipefail

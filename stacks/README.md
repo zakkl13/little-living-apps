@@ -6,9 +6,9 @@ not code** — a directory under `stacks/`, read by the generic framework. Addin
 changes and no recompile**.
 
 Pick the active stack per instance with `LILA_STACK` (default `rails-pwa`), set in `.env` /
-`/etc/lila/<instance>.env`. The same value drives six things from one source of truth: the scaffold,
-the systemd serve unit, the app toolchain, the manager prompt, the worker prompt, and the eval
-fixture.
+`.docker/<instance>.env` (or `/etc/lila/<instance>.env` on legacy systemd hosts). The same value
+drives six things from one source of truth: the scaffold, the serve command, the app toolchain, the
+manager prompt, the worker prompt, and the eval fixture.
 
 ## Layout
 
@@ -16,7 +16,7 @@ fixture.
 stacks/
   <name>/
     stack.toml        # the contract (below)
-    scaffold.sh       # creates the app at instance stand-up (runtime, via bin/new-app)
+    scaffold.sh       # creates the app at instance stand-up (runtime, via lila-new-app)
     worker.md         # the "## Runtime conventions" fragment spliced into the worker AGENTS.md
     manager.md        # the "the app" fragment spliced into the manager's runtime-environment section
     eval/
@@ -36,17 +36,17 @@ display = "Rails 8 + PWA"      # human-readable label
 [toolchain]
 ruby = "3.3"
 
-# The scaffold script, run at instance creation by the (generic) bin/new-app as the service user, in
-# the app dir, with LILA_INSTANCE / APP_DIR / APP_PORT / LILA_DOMAIN / SKIP_AUTH / SERVICE_USER / MISE
-# in the environment. Full bash: conditionals, post-tweaks, idempotency guards.
+# The scaffold script, run at instance creation by lila-new-app in the app dir, with LILA_INSTANCE /
+# APP_DIR / APP_PORT / LILA_DOMAIN / SKIP_AUTH / SERVICE_USER / MISE in the environment. Full bash:
+# conditionals, post-tweaks, idempotency guards.
 [scaffold]
 script = "scaffold.sh"
 
-# How to start the app. Portable command: it binds localhost and reads ${APP_PORT} from the
-# environment. bin/new-app wraps it with the mise wrapper for the systemd ExecStart; the eval probe
-# runs it directly. `env` becomes systemd `Environment=` lines (and is exported by the eval probe).
+# How to start the app. Portable command: it reads ${APP_HOST} and ${APP_PORT} from the environment.
+# Docker runs it directly after lila-new-app; bin/new-app wraps it with mise for legacy systemd;
+# the eval probe runs it directly. `env` is exported by each supervisor/probe.
 [serve]
-exec = "bin/rails server -b 127.0.0.1 -p ${APP_PORT}"
+exec = "bin/rails server -b ${APP_HOST} -p ${APP_PORT}"
 env  = { RAILS_ENV = "development" }
 
 # Validation contract: the app's own test command, a route it serves once booted (the eval probe
@@ -71,11 +71,11 @@ manager = "manager.md"
 
 - **`worker.md`** is the `## Runtime conventions (this app is a …)` section. The framework wraps it
   with the constant role / reporting / browser-self-validation / scope rules to form the workspace
-  `AGENTS.md` (and `CLAUDE.md`). Keep `${LILA_APP_SERVICE:-lila-app@primary}` and
-  `${APP_PORT:-3000}` literal — the worker expands them against its own per-instance environment.
+  `AGENTS.md` (and `CLAUDE.md`). Use `$LILA_APP_URL`, `$APP_PORT`, and `$LILA_APP_RESTART_CMD`
+  literally — the worker expands them against its own per-instance environment.
 - **`manager.md`** is the "the app" bullets in the manager's runtime-environment section (what kind of
-  app it is, how it reloads). Use the placeholders `{workspace}` and `{service}`; the framework fills
-  them from the live runtime facts.
+  app it is, how it reloads). Use the placeholders `{workspace}` and `{restart_cmd}`; the framework
+  fills them from the live runtime facts.
 
 ## Design — framework-generic, not part of the stack contract
 
@@ -88,7 +88,7 @@ curated slice offered on request) ⊂ `full` (all 150, reachable only by an expl
 `design/systems/INDEX.md`.
 
 The active choice is `LILA_DESIGN` (default `random`): `random` (blind draw from the **default** pool),
-`random:<seed>` (reproducible), or `<brand>` (pin any system from any pool). At standup `bin/new-app`
+`random:<seed>` (reproducible), or `<brand>` (pin any system from any pool). At standup `lila-new-app`
 **always** resolves it with `lila design draw` and passes the chosen system's package dir into the
 scaffold env. A stack that renders UI consumes it in its own `scaffold.sh` — `rails-pwa` **installs the
 curated baseline** (it does NOT re-derive tokens or ship a hand-written component layer):
@@ -124,4 +124,5 @@ proven by `cargo test` (`tests/eval_graders.rs`, `tests/eval_rails.rs`).
    needs a one-time build.
 3. Smoke-test the contract: `lila stack <name>` should print the `LILA_STACK_*` assignments without
    error, and `cargo test` (the stack-loader unit tests parse every in-repo stack).
-4. Run it: set `LILA_STACK=<name>` and `bootstrap.sh` / `bin/new-instance`. No Rust edits, no rebuild.
+4. Run it: set `LILA_STACK=<name>` and start an instance with `bin/new-instance-docker`. No Rust
+   edits, no rebuild.

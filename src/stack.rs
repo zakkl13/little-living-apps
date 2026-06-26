@@ -4,7 +4,7 @@
 //! in `stacks/<name>/` as a `stack.toml` contract (see `stacks/README.md`) plus the fragment files it
 //! references — a scaffold script and two prompt fragments. [`StackProfile::load`] reads the contract
 //! and inlines the prompt fragments, so every consumer (the manager/worker prompts, the eval graders,
-//! and the generic `bin/new-app`) reads one struct instead of re-encoding "Rails PWA" in six places.
+//! and the generic app scaffolder) reads one struct instead of re-encoding "Rails PWA" in six places.
 //!
 //! `stacks/` resolves the same way the eval fixture does: the current working directory first (dev,
 //! on-box, and tests all run from the repo root), then the crate manifest dir as a fallback.
@@ -24,11 +24,11 @@ pub struct StackProfile {
     pub display: String,
     /// App-language toolchain pins, merged into bootstrap's `mise use -g …` (node is always added).
     pub toolchain: BTreeMap<String, String>,
-    /// Absolute path to the per-stack scaffold script `bin/new-app` runs at instance creation.
+    /// Absolute path to the per-stack scaffold script `lila-new-app` runs at instance creation.
     pub scaffold_script: PathBuf,
-    /// Portable serve command (binds localhost, reads `${APP_PORT}`); the systemd unit + eval probe.
+    /// Portable serve command, parameterized by `${APP_HOST}` and `${APP_PORT}`.
     pub serve_exec: String,
-    /// Process environment for the serve unit (rendered as systemd `Environment=` lines).
+    /// Process environment for the app process.
     pub serve_env: BTreeMap<String, String>,
     /// The app's own test command (drives the eval `tests_green` grader).
     pub test_cmd: String,

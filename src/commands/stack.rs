@@ -1,9 +1,9 @@
 //! `lila stack <name>` — print a stack profile's fields as shell assignments, the bridge that lets
-//! `bin/new-app` and `bootstrap.sh` consume the data-driven stack contract without parsing TOML in
-//! bash. Consumers do `eval "$(lila stack <name>)"` and read the `LILA_STACK_*` variables.
+//! Docker, legacy systemd scripts, and eval consume the data-driven stack contract without parsing
+//! TOML in bash. Consumers do `eval "$(lila stack <name>)"` and read the `LILA_STACK_*` variables.
 //!
-//! Values are single-quoted so a literal `${APP_PORT}` in the serve command survives the `eval`
-//! (systemd / the eval probe expands it later). Any embedded single quotes are escaped.
+//! Values are single-quoted so literal `${APP_HOST}` / `${APP_PORT}` references in the serve command
+//! survive the `eval` for the app supervisor or eval probe to expand later.
 
 use crate::stack::StackProfile;
 
