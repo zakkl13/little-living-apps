@@ -41,6 +41,8 @@ services:
       WORKSPACE_DIR: /workspace
       APP_PORT: ${APP_PORT:-3000}
       APP_HOST: 0.0.0.0
+      BUNDLE_APP_CONFIG: /workspace/.bundle
+      BUNDLE_PATH: /workspace/vendor/bundle
       PORT: ${APP_PORT:-3000}
     working_dir: /workspace
     command:

@@ -24,6 +24,7 @@ LILA_BIN="${LILA_BIN:-/opt/lila/bin/lila}"
 [[ -x "$MISE" ]] || die "MISE shim or binary not found at $MISE."
 
 mkdir -p "$APP_DIR"
+git config --global --add safe.directory "$APP_DIR" >/dev/null 2>&1 || true
 if ! git -C "$APP_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   git -C "$APP_DIR" init -q
   git -C "$APP_DIR" config user.email 'lila@localhost'
