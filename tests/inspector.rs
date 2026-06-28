@@ -70,6 +70,7 @@ async fn inspector_serves_readonly_views() {
 
     let port = start(
         InspectorConfig {
+            host: "127.0.0.1".into(),
             port: 0,
             token: Some("secret".into()),
             manager_model: "claude-opus-4-8".into(),

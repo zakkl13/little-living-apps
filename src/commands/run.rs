@@ -105,6 +105,7 @@ async fn maybe_start_inspector(
         return;
     }
     let icfg = crate::inspector::InspectorConfig {
+        host: cfg.inspector_host.clone(),
         port: cfg.inspector_port,
         token: cfg.inspector_token.clone(),
         manager_model: cfg.manager_model.clone().unwrap_or_default(),

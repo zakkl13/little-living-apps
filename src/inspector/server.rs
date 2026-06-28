@@ -1,5 +1,5 @@
-//! The Inspector — a read-only HTTP plane over the manager's live state. Bound to 127.0.0.1 and
-//! fronted by Caddy at `/_inspect` (a
+//! The Inspector — a read-only HTTP plane over the manager's live state. In Docker it is bound to
+//! the Compose network and fronted by Caddy at `/_inspect` (a
 //! `handle_path` strips the prefix, so this server sees plain `/`, `/api/*`). It is deliberately NOT
 //! a model tool (the manager's "no hands" boundary stays airtight); it only observes.
 //!
@@ -25,6 +25,7 @@ use crate::runtime::telemetry::{ConvMessage, Telemetry, TurnRecord, UsageMeter, 
 /// Everything the Inspector needs to stand up. Built in the `run` command from the same handles the
 /// loop already owns, so it observes live state with no extra bookkeeping.
 pub struct InspectorConfig {
+    pub host: String,
     pub port: u16,
     /// Required secret; when set, every request must carry `?t=` or `x-inspector-token`.
     pub token: Option<String>,
@@ -75,16 +76,16 @@ pub async fn start(cfg: InspectorConfig, shutdown: Arc<Notify>) -> std::io::Resu
         .with_state(state)
         .layer(from_fn_with_state(token, require_token));
 
-    // Localhost only: the disposable VM + Caddy (token / basic_auth) are the boundary; binding to the
-    // loopback interface keeps this off every other interface entirely.
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", cfg.port)).await?;
-    let bound = listener.local_addr()?.port();
+    let host = cfg.host;
+    let listener = tokio::net::TcpListener::bind((host.as_str(), cfg.port)).await?;
+    let bound_addr = listener.local_addr()?;
+    let bound = bound_addr.port();
     tokio::spawn(async move {
         let _ = axum::serve(listener, app)
             .with_graceful_shutdown(async move { shutdown.notified().await })
             .await;
     });
-    tracing::info!(port = bound, "Inspector listening (read-only, loopback)");
+    tracing::info!(addr = %bound_addr, "Inspector listening (read-only)");
     Ok(bound)
 }
 

@@ -1,0 +1,9 @@
+{$LILA_DOMAIN} {
+	encode zstd gzip
+
+	handle_path /_inspect/* {
+		reverse_proxy manager:{$INSPECTOR_PORT}
+	}
+
+	reverse_proxy app:{$APP_PORT}
+}

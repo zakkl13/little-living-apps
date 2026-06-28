@@ -192,6 +192,7 @@ pub struct Config {
 
     // --- Inspector ---
     pub inspector_enabled: bool,
+    pub inspector_host: String,
     pub inspector_port: u16,
     pub inspector_token: Option<String>,
 }
@@ -405,6 +406,8 @@ impl Config {
             lila_mcp_port: get_trimmed(env, "LILA_MCP_PORT").and_then(|v| v.parse().ok()),
             lila_mcp_token: get_trimmed(env, "LILA_MCP_TOKEN"),
             inspector_enabled: is_truthy(get_trimmed(env, "INSPECTOR_ENABLED")),
+            inspector_host: get_trimmed(env, "INSPECTOR_HOST")
+                .unwrap_or_else(|| "127.0.0.1".into()),
             inspector_port: parse_u16(env, "INSPECTOR_PORT", 9090),
             inspector_token: get_trimmed(env, "INSPECTOR_TOKEN"),
         })

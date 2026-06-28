@@ -17,6 +17,7 @@ services:
       LILA_APP_RESTART_CMD: ${LILA_APP_RESTART_CMD:-docker compose restart app}
       LILA_APP_URL: http://app:${APP_PORT:-3000}
       APP_PORT: ${APP_PORT:-3000}
+      INSPECTOR_HOST: ${INSPECTOR_HOST:-0.0.0.0}
       INSPECTOR_PORT: ${INSPECTOR_PORT:-9090}
     volumes:
       - workspace:/workspace
@@ -27,6 +28,7 @@ services:
     restart: unless-stopped
     depends_on:
       - app
+      - manager
 
   app:
     container_name: ${LILA_INSTANCE:-primary}-app
@@ -70,17 +72,18 @@ services:
       INSPECTOR_PORT: ${INSPECTOR_PORT:-9090}
     command:
       - caddy
-      - reverse-proxy
-      - --from
-      - ${LILA_DOMAIN}
-      - --to
-      - app:${APP_PORT:-3000}
+      - run
+      - --config
+      - /etc/caddy/Caddyfile
+      - --adapter
+      - caddyfile
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - app
     restart: unless-stopped
