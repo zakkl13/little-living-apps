@@ -90,7 +90,7 @@ secrets it can't invent.
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-bin/new-instance primary                  # build image, create volumes, start manager + app
+bin/new-instance primary                  # build image, create volumes, start the Compose project
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
 docker compose --env-file .docker/primary.env exec manager codex login --device-auth
@@ -100,8 +100,9 @@ docker compose --env-file .docker/primary.env logs -f manager
 ```
 
 `bin/new-instance` writes `.docker/<instance>.env`, creates instance-prefixed named volumes,
-and starts one Compose project. The app container runs `lila-new-app` before serving, so a fresh
-workspace is scaffolded automatically and later restarts keep the same persistent volume.
+and starts one Compose project. If `LILA_DOMAIN` is set, it enables the bundled Caddy profile for
+HTTPS automatically. The app container runs `lila-new-app` before serving, so a fresh workspace is
+scaffolded automatically and later restarts keep the same persistent volume.
 
 ### Slash commands
 

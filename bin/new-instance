@@ -51,6 +51,10 @@ APP_PORT="${APP_PORT:-3000}"
 INSPECTOR_PORT="${INSPECTOR_PORT:-9090}"
 APP_BIND="${APP_BIND:-127.0.0.1}"
 LILA_IMAGE="${LILA_IMAGE:-lila-rs:dockerize}"
+COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
+if [[ -z "$COMPOSE_PROFILES" && -n "${LILA_DOMAIN:-}" ]]; then
+  COMPOSE_PROFILES=caddy
+fi
 ENV_DIR="$REPO_DIR/.docker"
 ENV_FILE="$ENV_DIR/$NAME.env"
 REL_ENV_FILE=".docker/$NAME.env"
@@ -77,6 +81,7 @@ COMPOSE_PROJECT_NAME=$NAME
 LILA_INSTANCE=$NAME
 LILA_ENV_FILE=$REL_ENV_FILE
 LILA_IMAGE=$LILA_IMAGE
+COMPOSE_PROFILES=$COMPOSE_PROFILES
 
 TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN
 ALLOWED_USER_IDS=$ALLOWED_USER_IDS
@@ -112,10 +117,14 @@ for suffix in workspace memory state codex-home caddy-data caddy-config; do
 done
 
 log "Starting Compose project '$NAME'"
-COMPOSE_PROJECT_NAME="$NAME" docker compose \
+COMPOSE_PROJECT_NAME="$NAME" COMPOSE_PROFILES="$COMPOSE_PROFILES" docker compose \
   --env-file "$ENV_FILE" \
   -f "$REPO_DIR/compose.yaml" \
   up -d --build
+
+PUBLIC_URL="${LILA_DOMAIN:+https://$LILA_DOMAIN}"
+[[ -n "$PUBLIC_URL" ]] || PUBLIC_URL="not enabled"
+ACTIVE_PROFILES="${COMPOSE_PROFILES:-none}"
 
 cat <<EOF
 
@@ -123,6 +132,8 @@ Instance '$NAME' is running under Docker Compose.
 
 Env file:  $ENV_FILE
 App:       http://$APP_BIND:$APP_PORT
+Caddy:     $PUBLIC_URL
+Profiles:  $ACTIVE_PROFILES
 Logs:      COMPOSE_PROJECT_NAME=$NAME docker compose --env-file $ENV_FILE -f $REPO_DIR/compose.yaml logs -f
 
 For Codex auth, run:

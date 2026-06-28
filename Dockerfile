@@ -6,6 +6,8 @@ COPY vendor ./vendor
 COPY src ./src
 RUN cargo build --release --bin lila
 
+FROM docker:29-cli AS docker-cli
+
 FROM ruby:3.3-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -17,9 +19,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         ca-certificates \
-        cmake \
         curl \
-        docker.io \
         git \
         gnupg \
         build-essential \
@@ -37,10 +37,12 @@ RUN npm install -g @openai/codex @anthropic-ai/claude-code \
     && npm init -y >/dev/null \
     && npm install playwright \
     && npx playwright install chromium \
-    && npx playwright install-deps chromium
+    && npx playwright install-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN gem install rails -v '~> 8.0' --no-document
 
+COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=builder /src/target/release/lila /opt/lila/bin/lila
 COPY bin /opt/lila/bin
 COPY stacks /opt/lila/stacks
