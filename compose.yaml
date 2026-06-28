@@ -28,7 +28,6 @@ services:
     restart: unless-stopped
     depends_on:
       - app
-      - manager
 
   app:
     container_name: ${LILA_INSTANCE:-primary}-app
@@ -47,11 +46,11 @@ services:
       - -lc
       - |
         lila-new-app
-        eval "$(cd /opt/lila && lila stack "${LILA_STACK:-rails-pwa}")"
+        eval "$$(cd /opt/lila && lila stack "$${LILA_STACK:-rails-pwa}")"
         while IFS= read -r kv; do
-          [ -n "$kv" ] && export "$kv"
-        done <<< "$LILA_STACK_SERVE_ENV"
-        exec bash -lc "$LILA_STACK_SERVE_EXEC"
+          [ -n "$$kv" ] && export "$$kv"
+        done <<< "$$LILA_STACK_SERVE_ENV"
+        exec bash -lc "$$LILA_STACK_SERVE_EXEC"
     volumes:
       - workspace:/workspace
     expose:
@@ -86,6 +85,7 @@ services:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - app
+      - manager
     restart: unless-stopped
 
 volumes:
