@@ -95,13 +95,19 @@ services:
 volumes:
   workspace:
     name: ${LILA_INSTANCE:-primary}-workspace
+    external: true
   memory:
     name: ${LILA_INSTANCE:-primary}-memory
+    external: true
   state:
     name: ${LILA_INSTANCE:-primary}-state
+    external: true
   codex-home:
     name: ${LILA_INSTANCE:-primary}-codex-home
+    external: true
   caddy-data:
     name: ${LILA_INSTANCE:-primary}-caddy-data
+    external: true
   caddy-config:
     name: ${LILA_INSTANCE:-primary}-caddy-config
+    external: true
