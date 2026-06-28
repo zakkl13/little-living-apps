@@ -11,6 +11,7 @@ FROM docker:29-cli AS docker-cli
 FROM ruby:3.3-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive \
+    LILA_ASSETS_DIR=/opt/lila \
     NODE_PATH=/opt/lila/tooling/node_modules \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
     PATH=/opt/lila/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin

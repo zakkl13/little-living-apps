@@ -6,8 +6,8 @@
 //! and inlines the prompt fragments, so every consumer (the manager/worker prompts, the eval graders,
 //! and the generic app scaffolder) reads one struct instead of re-encoding "Rails PWA" in six places.
 //!
-//! `stacks/` resolves the same way the eval fixture does: the current working directory first (dev,
-//! on-box, and tests all run from the repo root), then the crate manifest dir as a fallback.
+//! `stacks/` resolves from the current working directory first (dev and tests run from the repo root),
+//! then from the runtime asset root (`LILA_ASSETS_DIR`, default `/opt/lila`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -84,14 +84,20 @@ struct PromptToml {
     manager: String,
 }
 
-/// Resolve the `stacks/` directory: CWD first (dev / on-box / tests run from the repo root), then the
-/// crate manifest dir. Mirrors `eval::fixture`'s template resolution.
+/// Resolve the `stacks/` directory: CWD first (dev/tests from the repo root), then the runtime asset
+/// root baked into the Docker image.
 pub fn stacks_dir() -> PathBuf {
     let from_cwd = std::env::current_dir().unwrap_or_default().join("stacks");
     if from_cwd.exists() {
         return from_cwd;
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("stacks")
+    runtime_assets_dir().join("stacks")
+}
+
+pub(crate) fn runtime_assets_dir() -> PathBuf {
+    std::env::var_os("LILA_ASSETS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/opt/lila"))
 }
 
 impl StackProfile {

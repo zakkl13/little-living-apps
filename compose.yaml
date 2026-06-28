@@ -9,6 +9,7 @@ services:
       - ${LILA_ENV_FILE:-.env}
     environment:
       LILA_INSTANCE: ${LILA_INSTANCE:-primary}
+      LILA_ASSETS_DIR: /opt/lila
       WORKSPACE_DIR: /workspace
       MEMORY_DIR: /var/lib/lila/memory
       MANAGER_STATE_DIR: /var/lib/lila/state
@@ -36,6 +37,7 @@ services:
       - ${LILA_ENV_FILE:-.env}
     environment:
       LILA_INSTANCE: ${LILA_INSTANCE:-primary}
+      LILA_ASSETS_DIR: /opt/lila
       WORKSPACE_DIR: /workspace
       APP_PORT: ${APP_PORT:-3000}
       APP_HOST: 0.0.0.0
@@ -43,14 +45,14 @@ services:
     working_dir: /workspace
     command:
       - bash
-      - -lc
+      - -c
       - |
         lila-new-app
         eval "$$(cd /opt/lila && lila stack "$${LILA_STACK:-rails-pwa}")"
         while IFS= read -r kv; do
           [ -n "$$kv" ] && export "$$kv"
         done <<< "$$LILA_STACK_SERVE_ENV"
-        exec bash -lc "$$LILA_STACK_SERVE_EXEC"
+        exec bash -c "$$LILA_STACK_SERVE_EXEC"
     volumes:
       - workspace:/workspace
     expose:
