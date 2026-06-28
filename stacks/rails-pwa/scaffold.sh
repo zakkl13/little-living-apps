@@ -31,6 +31,14 @@ else
   fi
 fi
 
+# Existing apps migrated into a fresh container have Gemfile.lock but no installed bundle. Keep gems in
+# the workspace volume so app container recreates do not need to preserve an image writable layer.
+if [[ -f "$APP_DIR/Gemfile" ]]; then
+  log "Installing locked bundle"
+  "$MISE" exec -- bundle config set --local path vendor/bundle
+  "$MISE" exec -- bundle install
+fi
+
 # --- 2. PWA: enable the routes Rails 8 ships (commented by default) + link the manifest ---------
 ROUTES="$APP_DIR/config/routes.rb"
 if [[ -f "$ROUTES" ]]; then
