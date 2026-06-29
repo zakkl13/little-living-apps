@@ -3,7 +3,7 @@ services:
     container_name: ${LILA_INSTANCE:-primary}-manager
     build:
       context: .
-    image: ${LILA_IMAGE:-lila-rs:dockerize}
+    image: ${LILA_IMAGE:-lila-rs:latest}
     command: ["lila", "run"]
     env_file:
       - ${LILA_ENV_FILE:-.env}
@@ -32,7 +32,7 @@ services:
 
   app:
     container_name: ${LILA_INSTANCE:-primary}-app
-    image: ${LILA_IMAGE:-lila-rs:dockerize}
+    image: ${LILA_IMAGE:-lila-rs:latest}
     env_file:
       - ${LILA_ENV_FILE:-.env}
     environment:
