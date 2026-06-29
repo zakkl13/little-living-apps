@@ -49,7 +49,8 @@ Little Living Apps is in early beta: the framework is moving quickly, and setup 
 change. It is usable today, already powers [lillivinapps.zakk.io](https://lillivinapps.zakk.io),
 and is being actively dogfooded across many other personal software ideas.
 
-The supported production install target today is a fresh Ubuntu 22.04+/24.04 or Debian 12 systemd VPS; other Linux distributions may work but are not yet supported or tested.
+The supported production install target today is Docker Compose on a fresh Linux VPS: one Compose
+project per living app.
 
 ### The personal software era
 
@@ -76,7 +77,7 @@ The fastest path is to hand the whole setup to Claude Code or Codex. Point it at
 
 > **go check out the GitHub repo zakkl13/little-living-apps and set up an app instance for me**
 
-The agent drives the rest end to end: VPS sizing, SSH, the Telegram bot, `.env`, bootstrap, the
+The agent drives the rest end to end: VPS sizing, SSH, Docker, the Telegram bot, `.env`, the
 one-time subscription login, and an optional domain with HTTPS. It only pauses for the handful of
 secrets it can't invent.
 
@@ -89,21 +90,19 @@ secrets it can't invent.
 ```bash
 git clone https://github.com/zakkl13/little-living-apps.git && cd little-living-apps
 cp .env.example .env && $EDITOR .env     # set TELEGRAM_BOT_TOKEN + ALLOWED_USER_IDS
-sudo bash bootstrap.sh                    # the active stack's toolchain + Node + Rust, both agent CLIs, builds the lila binary, systemd
-sudo LILA_INSTANCE=primary bash bin/new-app # scaffold + start the primary app service
+bin/new-instance primary                  # build image, create volumes, start the Compose project
 
 # one-time: log the box into your ChatGPT subscription (Codex backend)
-sudo -u <you> -H CODEX_HOME=/var/lib/lila/codex \
-  ~/.local/bin/mise exec -- codex login --device-auth
+docker compose --env-file .docker/primary.env exec manager codex login --device-auth
+docker compose --env-file .docker/primary.env restart manager
 
-sudo systemctl start lila-manager@primary
-journalctl -u lila-manager@primary -f      # watch it think
+docker compose --env-file .docker/primary.env logs -f manager
 ```
 
-`bootstrap.sh` prepares the host; `bin/new-app` is the explicit step that creates and starts the
-primary app (`lila-app@primary`). Both are idempotent. Re-run bootstrap after pulling, re-run
-`sudo LILA_INSTANCE=primary bash bin/new-app` when the stack scaffold changes, then restart the
-manager with `systemctl restart lila-manager@primary`.
+`bin/new-instance` writes `.docker/<instance>.env`, creates instance-prefixed named volumes,
+and starts one Compose project. If `LILA_DOMAIN` is set, it enables the bundled Caddy profile for
+HTTPS automatically. The app container runs `lila-new-app` before serving, so a fresh workspace is
+scaffolded automatically and later restarts keep the same persistent volume.
 
 ### Slash commands
 
@@ -124,13 +123,14 @@ The model is always *one manager, one app*. Want more apps on a single host? Run
 Each instance gets its own manager, Telegram bot, workspace, ports, and domain:
 
 ```bash
-sudo LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
+LILA_DOMAIN=cm.example.com APP_PORT=3001 INSPECTOR_PORT=9091 \
      TELEGRAM_BOT_TOKEN=<new-bot-token> \
-     bash bin/new-instance cm
+     bin/new-instance cm
 ```
 
-Every instance, the first one (`primary`) and every addition, runs under the same systemd template
-units. Create one bot per instance via @BotFather; a bot can't be long-polled twice.
+Every instance, the first one (`primary`) and every addition, runs as its own Compose project with
+its own manager, app container, workspace, memory, state, Codex home, ports, and bot. Create one bot
+per instance via @BotFather; a bot can't be long-polled twice.
 
 ## Security
 
@@ -206,8 +206,8 @@ The manager brain and the workers both run on a subscription-billed backend, sel
 `AGENT_BACKEND` (default `codex`). Both ride a subscription, not metered API billing, behind the
 same internal seams.
 
-`bootstrap.sh` installs both `codex` and `claude` under the same mise-managed Node, so a later
-`/backend codex|claude` swap does not depend on which backend was active during install.
+The Docker image includes both `codex` and `claude`, so a later `/backend codex|claude` swap does
+not depend on which backend was active when the instance was created.
 
 | | `codex` (default) | `claude` |
 |---|---|---|
@@ -241,11 +241,9 @@ a local Inspector.)
 
 Ask for an app and a worker scaffolds it with `lila-new-app`: a minimal **Rails 8 + PWA** project,
 SQLite on the Solid stack, Hotwire, Rails' built-in auth, running in **reload mode** so edits go
-live on the next request. During setup, the primary app is created explicitly with
-`sudo LILA_INSTANCE=primary bash bin/new-app`; bootstrap only prepares the host and proxy. The app
-binds to `127.0.0.1:3000`, private to the box. To publish behind your own domain with **automatic
-HTTPS**, point DNS at the host and set `LILA_DOMAIN` when you run `bootstrap.sh`; it installs Caddy
-and writes the site block for you.
+live on the next request. In Docker, the app container runs `lila-new-app` before the stack's serve
+command, so the workspace volume starts empty and becomes the app. The app binds inside the Compose
+network and is published only through the host port or optional Caddy profile.
 
 *Why:* Rails 8 is batteries-included (auth, DB, and a PWA on day one) and reload mode means edits go
 live without a deploy step, which is exactly the loop a maintaining agent needs. The substrate is
@@ -283,10 +281,11 @@ together are written in idiomatic async **Rust**: one self-contained binary per 
 so it's built for exactly that: a single serialized loop, no global mutable state, no `unsafe`, and
 every external boundary an injectable seam, which is what lets the deterministic suite (below) drive
 the *real compiled binary* against fakes. CI denies clippy warnings and caps cyclomatic complexity at
-6 per function. It ships as one binary, no runtime, no `node_modules` for the brain on the host.
+6 per function. It ships as one binary inside the Docker image; the app language runtime lives beside
+it because workers need the same environment they deploy into.
 *Cost:* a two-language system, Rust for the brain and whatever the chosen stack uses for the apps
-(Ruby/Rails by default); and the host builds that binary once at `bootstrap.sh` time (a few minutes)
-rather than installing a prebuilt package.
+(Ruby/Rails by default); and the image build compiles that binary from source rather than installing
+a prebuilt package.
 
 ## Tests & Evals
 

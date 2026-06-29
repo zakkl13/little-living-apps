@@ -154,8 +154,8 @@ pub struct Config {
     pub app_public_url: String,
     /// Holds the app the agent builds and maintains.
     pub workspace_dir: String,
-    /// systemd unit name for the app, so a worker restarts the RIGHT app.
-    pub app_service_name: String,
+    /// Command workers should run after structural app changes.
+    pub app_restart_cmd: String,
     /// Active stack plugin (`stacks/<stack>/`), chosen by `LILA_STACK` (default `rails-pwa`). Decides
     /// the *kind of app* the team builds — scaffold, serve, prompts, eval fixture all read it.
     pub stack: String,
@@ -192,6 +192,7 @@ pub struct Config {
 
     // --- Inspector ---
     pub inspector_enabled: bool,
+    pub inspector_host: String,
     pub inspector_port: u16,
     pub inspector_token: Option<String>,
 }
@@ -320,7 +321,7 @@ impl Validated {
 /// The filesystem-path tier of config, resolved together to keep `from_env` simple.
 struct Paths {
     workspace_dir: String,
-    app_service_name: String,
+    app_restart_cmd: String,
     memory_dir: String,
     manager_dir: String,
     manager_state_dir: String,
@@ -332,11 +333,11 @@ impl Paths {
             get_trimmed(env, "MANAGER_STATE_DIR").unwrap_or_else(|| "/var/lib/lila/state".into());
         let manager_dir = get_trimmed(env, "MANAGER_DIR")
             .unwrap_or_else(|| format!("{manager_state_dir}/manager"));
+        let app_restart_cmd = get_trimmed(env, "LILA_APP_RESTART_CMD")
+            .unwrap_or_else(|| "docker restart primary-app".into());
         Self {
-            workspace_dir: get_trimmed(env, "WORKSPACE_DIR")
-                .unwrap_or_else(|| "/srv/primary".into()),
-            app_service_name: get_trimmed(env, "LILA_APP_SERVICE")
-                .unwrap_or_else(|| "lila-app@primary".into()),
+            workspace_dir: get_trimmed(env, "WORKSPACE_DIR").unwrap_or_else(|| "/workspace".into()),
+            app_restart_cmd,
             memory_dir: get_trimmed(env, "MEMORY_DIR")
                 .unwrap_or_else(|| "/var/lib/lila/memory".into()),
             manager_dir,
@@ -386,7 +387,7 @@ impl Config {
             allowed_user_ids: valid.allowed_user_ids,
             app_public_url: derive_public_url(env),
             workspace_dir: paths.workspace_dir,
-            app_service_name: paths.app_service_name,
+            app_restart_cmd: paths.app_restart_cmd,
             stack: get_trimmed(env, "LILA_STACK").unwrap_or_else(|| "rails-pwa".into()),
             design: get_trimmed(env, "LILA_DESIGN").unwrap_or_else(|| "random".into()),
             sandbox_mode: valid.sandbox_mode,
@@ -405,6 +406,8 @@ impl Config {
             lila_mcp_port: get_trimmed(env, "LILA_MCP_PORT").and_then(|v| v.parse().ok()),
             lila_mcp_token: get_trimmed(env, "LILA_MCP_TOKEN"),
             inspector_enabled: is_truthy(get_trimmed(env, "INSPECTOR_ENABLED")),
+            inspector_host: get_trimmed(env, "INSPECTOR_HOST")
+                .unwrap_or_else(|| "127.0.0.1".into()),
             inspector_port: parse_u16(env, "INSPECTOR_PORT", 9090),
             inspector_token: get_trimmed(env, "INSPECTOR_TOKEN"),
         })
@@ -437,6 +440,18 @@ mod tests {
         assert_eq!(cfg.app_public_url, "");
         assert_eq!(cfg.stack, "rails-pwa", "default stack is rails-pwa");
         assert_eq!(cfg.design, "random", "default design is a safe blind draw");
+        assert_eq!(cfg.app_restart_cmd, "docker restart primary-app");
+    }
+
+    #[test]
+    fn app_restart_cmd_overrides_the_docker_default() {
+        let mut env = base_env();
+        env.insert(
+            "LILA_APP_RESTART_CMD".into(),
+            "docker restart demo-app".into(),
+        );
+        let cfg = Config::from_env(&env).expect("loads");
+        assert_eq!(cfg.app_restart_cmd, "docker restart demo-app");
     }
 
     #[test]

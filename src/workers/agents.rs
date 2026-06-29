@@ -37,25 +37,27 @@ back from you is the summary block described here — so everything it needs mus
 ## Your runtime environment
 - You run on an **always-on Linux VM** you and your team fully control. There is no hibernation.
 - You have a persistent filesystem, outbound internet, and root-capable tooling. The app lives in
-  this git repo — your working directory (`$WORKSPACE_DIR`; `/srv/<instance>`, e.g. `/srv/primary`).
-- **This host may run several little-living-apps instances.** Every app is a systemd template
-  instance `lila-app@<instance>`. You only ever touch **your** app: reach it at
-  `http://localhost:${APP_PORT:-3000}` and restart it with **your** unit
-  `${LILA_APP_SERVICE:-lila-app@primary}`. Never hardcode `3000` or a literal unit name.
-- **Long-running processes are managed by `systemd`**, not a TTY. Install a unit so they survive."####;
+  this git repo — your working directory (`$WORKSPACE_DIR`, normally `/workspace`).
+- **This host may run several little-living-apps instances.** You only ever touch **your** app:
+  reach it at `${LILA_APP_URL:-http://localhost:${APP_PORT:-3000}}` and, when a structural change requires it,
+  restart it with `$LILA_APP_RESTART_CMD`. Never hardcode `3000`, a service name, or a container
+  name.
+- **Long-running processes are managed by the instance supervisor**, not a TTY. Use the configured
+  restart command instead of starting ad-hoc foreground servers."####;
 
 /// The framework-generic frame that closes the worker `AGENTS.md`: self-validation method and scope
 /// discipline. Appended after the stack's "## Runtime conventions" fragment.
 const WORKER_AGENTS_SUFFIX: &str = r####"## Validate your own work (browser self-validation)
 **Every objective ends with you proving your own work** — your summary's claims must be backed by
 what you actually saw. Playwright + headless Chromium are pre-installed host-wide and `NODE_PATH` is
-set, so `require("playwright")` resolves anywhere — no `npm install`. The app binds locally to
-`http://localhost:${APP_PORT:-3000}` (use `$APP_PORT`, never a literal `3000`).
+set, so `require("playwright")` resolves anywhere — no `npm install`. The app URL is
+`${LILA_APP_URL:-http://localhost:${APP_PORT:-3000}}` (use `$LILA_APP_URL`/`$APP_PORT`, never a
+literal `3000`).
 
 1. Confirm the route serves first:
-   `curl -sS -o /dev/null -w '%{http_code}\n' "http://localhost:${APP_PORT:-3000}/your/path"`
+   `curl -sS -o /dev/null -w '%{http_code}\n' "${LILA_APP_URL:-http://localhost:${APP_PORT:-3000}}/your/path"`
 2. A single static page needs only the CLI:
-   `npx playwright screenshot --full-page "http://localhost:${APP_PORT:-3000}/your/path" /tmp/lila-shots/name.png`
+   `npx playwright screenshot --full-page "${LILA_APP_URL:-http://localhost:${APP_PORT:-3000}}/your/path" /tmp/lila-shots/name.png`
 3. Anything interactive — the default for user-visible work — write a short Node script that logs in,
    navigates, acts like a user, asserts the visible result, then screenshots it as proof. Save
    screenshots under `/tmp/lila-shots/` (`mkdir -p` first). A non-zero exit means it does not work

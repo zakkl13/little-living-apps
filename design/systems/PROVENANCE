@@ -17,8 +17,8 @@ guide).
 **The heavy per-brand packages are NOT committed to this repo.** Only a safety-net subset is vendored
 in git — the default-pool neutrals (`default`, `friendly`, `warm-editorial`) plus `stripe` — so a
 blind `random` draw, the look-change baseline, and the tests all work offline with zero fetch. The
-remaining ~146 systems are pulled at standup from the pinned commit above by `bin/fetch-design-catalog`
-(bootstrap.sh runs it once), which is what lets an explicit `LILA_DESIGN=<brand>` pin reach any system.
+remaining ~146 systems can be pulled from the pinned commit above by `bin/fetch-design-catalog`,
+which lets an explicit `LILA_DESIGN=<brand>` pin reach any system during local development.
 INDEX.md, this PROVENANCE, and LICENSE.upstream stay tracked — they are lila's curation, not bulk.
 
 We use upstream's curated `tokens.css` (the machine-readable token bindings agents paste verbatim) and

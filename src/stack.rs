@@ -4,10 +4,10 @@
 //! in `stacks/<name>/` as a `stack.toml` contract (see `stacks/README.md`) plus the fragment files it
 //! references — a scaffold script and two prompt fragments. [`StackProfile::load`] reads the contract
 //! and inlines the prompt fragments, so every consumer (the manager/worker prompts, the eval graders,
-//! and the generic `bin/new-app`) reads one struct instead of re-encoding "Rails PWA" in six places.
+//! and the generic app scaffolder) reads one struct instead of re-encoding "Rails PWA" in six places.
 //!
-//! `stacks/` resolves the same way the eval fixture does: the current working directory first (dev,
-//! on-box, and tests all run from the repo root), then the crate manifest dir as a fallback.
+//! `stacks/` resolves from the current working directory first (dev and tests run from the repo root),
+//! then from the runtime asset root (`LILA_ASSETS_DIR`, default `/opt/lila`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -22,13 +22,13 @@ pub struct StackProfile {
     pub name: String,
     /// Human-readable label (e.g. "Rails 8 + PWA").
     pub display: String,
-    /// App-language toolchain pins, merged into bootstrap's `mise use -g …` (node is always added).
+    /// App-language toolchain pins documented by the stack contract.
     pub toolchain: BTreeMap<String, String>,
-    /// Absolute path to the per-stack scaffold script `bin/new-app` runs at instance creation.
+    /// Absolute path to the per-stack scaffold script `lila-new-app` runs at instance creation.
     pub scaffold_script: PathBuf,
-    /// Portable serve command (binds localhost, reads `${APP_PORT}`); the systemd unit + eval probe.
+    /// Portable serve command, parameterized by `${APP_HOST}` and `${APP_PORT}`.
     pub serve_exec: String,
-    /// Process environment for the serve unit (rendered as systemd `Environment=` lines).
+    /// Process environment for the app process.
     pub serve_env: BTreeMap<String, String>,
     /// The app's own test command (drives the eval `tests_green` grader).
     pub test_cmd: String,
@@ -84,14 +84,20 @@ struct PromptToml {
     manager: String,
 }
 
-/// Resolve the `stacks/` directory: CWD first (dev / on-box / tests run from the repo root), then the
-/// crate manifest dir. Mirrors `eval::fixture`'s template resolution.
+/// Resolve the `stacks/` directory: CWD first (dev/tests from the repo root), then the runtime asset
+/// root baked into the Docker image.
 pub fn stacks_dir() -> PathBuf {
     let from_cwd = std::env::current_dir().unwrap_or_default().join("stacks");
     if from_cwd.exists() {
         return from_cwd;
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("stacks")
+    runtime_assets_dir().join("stacks")
+}
+
+pub(crate) fn runtime_assets_dir() -> PathBuf {
+    std::env::var_os("LILA_ASSETS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/opt/lila"))
 }
 
 impl StackProfile {
@@ -173,7 +179,7 @@ mod tests {
         assert!(p.toolchain.is_empty(), "node-react adds no app toolchain");
         assert!(p.serve_env.is_empty());
         assert!(p.worker_prompt.contains("React"));
-        assert!(p.manager_prompt.contains("{service}"));
+        assert!(p.manager_prompt.contains("{restart_cmd}"));
     }
 
     #[test]

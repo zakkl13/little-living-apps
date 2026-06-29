@@ -5,7 +5,8 @@
 # The heavy per-brand assets are NOT vendored in git. Only the safety-net subset is committed (the
 # default-pool neutrals + stripe — see design/systems/INDEX.md), so a blind `random` draw and the
 # tests work offline with zero fetch. This script pulls the *rest* of the 150-system catalog at
-# standup, so an explicit `LILA_DESIGN=<brand>` pin can reach any system. bootstrap.sh runs it once;
+# standup, so an explicit `LILA_DESIGN=<brand>` pin can reach any system. The Docker image carries
+# the committed safety-net systems; run this to backfill the full catalog for local development.
 # re-run it by hand if you wipe the catalog or want to refresh after a PROVENANCE commit bump.
 #
 #   bin/fetch-design-catalog              # every brand listed in INDEX.md (skips ones already present)

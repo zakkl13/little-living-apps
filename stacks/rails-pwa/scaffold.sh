@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # stacks/rails-pwa/scaffold.sh — scaffold ONE instance's app as a minimal Rails 8 + PWA project.
-# Lifted verbatim from the old bin/new-app (steps 1, 2, 2b, 3); the generic bin/new-app now owns the
-# framework contract (instance dir, env file, service user, systemd) and delegates the app body here.
+# Invoked by lila-new-app as the supervisor-neutral app creation step.
 #
-# Invoked by bin/new-app as the SERVICE USER, with the cwd already at the app dir and these vars in
+# Runs with the cwd already at the app dir and these vars in
 # the environment: LILA_INSTANCE, APP_DIR, APP_PORT, LILA_DOMAIN, SKIP_AUTH, SERVICE_USER, MISE.
 # Deliberately thin: it leans on Rails 8's own defaults (SQLite, the Solid stack, Hotwire, PWA stubs)
 # and generators rather than vendoring a template. Idempotent: re-running on a scaffolded app is a
-# no-op for the app body (the service install/start lives back in bin/new-app).
+# no-op for the app body.
 set -euo pipefail
 
 log() { printf '\033[1;35m[scaffold:rails-pwa]\033[0m %s\n' "$*"; }
@@ -22,7 +21,7 @@ if [[ -f "$APP_DIR/config/application.rb" ]]; then
   log "Rails app already present at $APP_DIR — skipping scaffold"
 else
   log "Scaffolding a Rails 8 app at $APP_DIR (SQLite + Solid + Hotwire + PWA defaults)"
-  # --skip-git: bootstrap already inited the repo. Keep Rails 8 defaults otherwise (that IS the
+  # --skip-git: lila-new-app already inited the repo. Keep Rails 8 defaults otherwise (that IS the
   # opinionated stack); the agent adds everything else.
   "$MISE" exec -- rails new . --skip-git
 
@@ -30,6 +29,14 @@ else
     log "Generating Rails' built-in authentication (for private access behind your domain)"
     "$MISE" exec -- bin/rails generate authentication
   fi
+fi
+
+# Existing apps migrated into a fresh container have Gemfile.lock but no installed bundle. Keep gems in
+# the workspace volume so app container recreates do not need to preserve an image writable layer.
+if [[ -f "$APP_DIR/Gemfile" ]]; then
+  log "Installing locked bundle"
+  "$MISE" exec -- bundle config set --local path vendor/bundle
+  "$MISE" exec -- bundle install
 fi
 
 # --- 2. PWA: enable the routes Rails 8 ships (commented by default) + link the manifest ---------

@@ -1,4 +1,4 @@
-//! `lila design draw <choice>` / `lila design tokens <file>` — the bridge that lets `bin/new-app` and
+//! `lila design draw <choice>` / `lila design tokens <file>` — the bridge that lets `lila-new-app` and
 //! a stack's `scaffold.sh` resolve and render the vendored design catalog without re-encoding the
 //! draw/lock logic in bash. The Rust side (`crate::design`) owns the pool-bounded draw and the token
 //! render; the shell just consumes the `LILA_DESIGN_*` assignments and the rendered `tokens.css`.

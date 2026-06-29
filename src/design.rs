@@ -19,8 +19,8 @@
 //! - **The lock** ([`DesignLock`]) — a committed `design.lock` that doubles as the selection-flow state
 //!   machine (`source`: default | invited | chosen | pinned).
 //!
-//! Resolution mirrors [`crate::stack::stacks_dir`]: CWD first (dev / on-box / tests run from the repo
-//! root), then the crate manifest dir.
+//! Resolution mirrors [`crate::stack::stacks_dir`]: CWD first (dev/tests from the repo root), then the
+//! runtime asset root (`LILA_ASSETS_DIR`, default `/opt/lila`).
 
 use std::path::{Path, PathBuf};
 
@@ -199,7 +199,7 @@ fn copy_package_into_lila(workspace: &Path, pkg: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Resolve the catalog dir (`design/systems`): CWD first, then the crate manifest dir.
+/// Resolve the catalog dir (`design/systems`): CWD first, then the runtime asset root.
 pub fn catalog_dir() -> PathBuf {
     let from_cwd = std::env::current_dir()
         .unwrap_or_default()
@@ -207,7 +207,7 @@ pub fn catalog_dir() -> PathBuf {
     if from_cwd.exists() {
         return from_cwd;
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("design/systems")
+    crate::stack::runtime_assets_dir().join("design/systems")
 }
 
 /// The pinned upstream commit, read from `design/systems/PROVENANCE` (`Commit:` line). Empty if absent.

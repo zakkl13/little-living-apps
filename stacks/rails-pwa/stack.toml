@@ -1,22 +1,21 @@
 name    = "rails-pwa"
 display = "Rails 8 + PWA"
 
-# Merged into bootstrap's `mise use -g …`; the framework always also installs node (validation infra).
+# App toolchain pin documented for stack authors; the Docker image already includes Ruby.
 [toolchain]
 ruby = "3.3"
 
-# Executed at RUNTIME by the generic bin/new-app (at instance creation), as the service user, in the
-# app dir, with LILA_INSTANCE/APP_DIR/APP_PORT/LILA_DOMAIN/SKIP_AUTH/SERVICE_USER/MISE in env. Full
-# bash: conditionals, sed/awk post-tweaks, idempotency guards.
+# Executed at runtime by lila-new-app in the app dir, with
+# LILA_INSTANCE/APP_DIR/APP_PORT/LILA_DOMAIN/SKIP_AUTH/SERVICE_USER/MISE in env. Full bash:
+# conditionals, sed/awk post-tweaks, idempotency guards.
 [scaffold]
 script = "scaffold.sh"
 
-# Templated into deploy/lila-app@.service's ExecStart + Environment lines. The command is portable:
-# bin/new-app prefixes the mise wrapper for the systemd unit; the eval probe runs it directly. It
-# binds localhost and reads ${APP_PORT} from the environment.
+# Portable serve command. Docker and eval run it directly. APP_HOST is 0.0.0.0 in Docker and
+# 127.0.0.1 for private probes.
 [serve]
-exec = "bin/rails server -b 127.0.0.1 -p ${APP_PORT}"
-# Process environment for the serve unit (rendered as systemd `Environment=` lines).
+exec = "bin/rails server -b ${APP_HOST} -p ${APP_PORT}"
+# Process environment for the app process.
 env = { RAILS_ENV = "development" }
 
 # Drives the eval graders (§E) AND is quoted into the prompts so agents know the restart rules.
